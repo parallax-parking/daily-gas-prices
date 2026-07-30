@@ -5,7 +5,7 @@ day, one row per day, into [`data/aaa_national_average.csv`](../data/aaa_nationa
 
 ```
 date,regular,mid_grade,premium,diesel,e85,retrieved_at_utc,source_url
-2026-07-30,4.091,4.523,4.874,4.216,3.402,2026-07-30T13:00:04+00:00,https://gasprices.aaa.com/
+2026-07-30,4.098,4.601,4.981,5.339,3.135,2026-07-30T12:45:38+00:00,https://gasprices.aaa.com/
 ```
 
 `date` is the US Eastern date of the reading, since that's the clock AAA
@@ -23,8 +23,10 @@ Two things to know about Actions cron:
 
 - **It only runs from the default branch.** The workflow has to be merged to
   `main` before the schedule takes effect — a cron on a feature branch never
-  fires. Use the **Run workflow** button (`workflow_dispatch`) to test it in the
-  meantime.
+  fires. The same goes for the **Run workflow** button: GitHub only lists
+  `workflow_dispatch` workflows that exist on the default branch, though once
+  it's there you can dispatch it against any branch. To try it before merging,
+  run it locally (below).
 - **Scheduled runs are best-effort.** GitHub delays or drops them under load,
   usually by minutes but occasionally longer, and disables schedules entirely
   after 60 days of no repository activity. The daily commit generally counts as
