@@ -1,0 +1,4 @@
+# Only needed if you also mirror the data into a Google Sheet.
+-r requirements.txt
+gspread>=6.0
+google-auth>=2.28
