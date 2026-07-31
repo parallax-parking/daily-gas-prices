@@ -294,7 +294,24 @@ evidence about model skill.
   sd exceeds 1.25× sigma.
 - **Effective n**, not nominal n. Consecutive daily forecasts are nearly the
   same bet. Uses the lag-1 autocorrelation adjustment `n_eff = n(1-r)/(1+r)`,
-  computed on the z series, and gates conclusions on it:
+  computed **two ways**, and gates on the lower:
+  - on the **residual** (z) series — how correlated the system's errors are. If
+    the model genuinely captures momentum its errors decorrelate and n_eff
+    approaches n. Risks overstating the evidence when errors only look
+    independent.
+  - on the **outcome** (actual change) series — how correlated price changes
+    themselves are. Gas prices are persistently autocorrelated regardless of
+    model quality, so this pins the discount near a constant fraction of n.
+    Risks sitting on a sound result for months.
+
+  Both are reported. The gap between them is informative in its own right: if
+  they stay close, the model is not removing the day-to-day overlap, which
+  neither number alone would reveal. `n_eff` is capped at nominal `n` —
+  anti-correlated errors do carry more information per observation, but
+  claiming more independent evidence than there are observations is not a claim
+  this report should make.
+
+  Gates on the lower figure:
   - `n_eff < 20` — reports numbers, states plainly that nothing is concludable
   - `n_eff < 50` — directional read only; gaps under 10pp are noise
   - otherwise — first honest calibration read

@@ -133,7 +133,44 @@ def effective_n(values: list[float]) -> tuple[float, float]:
     if n < 3:
         return float(n), 0.0
     r = lag1_autocorr(values)
-    return max(1.0, n * (1 - r) / (1 + r)), r
+    # Negative autocorrelation drives the formula above n. Anti-correlated
+    # errors genuinely do carry more information per observation, but claiming
+    # more independent evidence than there are observations is not a claim this
+    # report should make, so n is a hard ceiling.
+    return min(float(n), max(1.0, n * (1 - r) / (1 + r))), r
+
+
+def sample_size(rows: list[dict[str, object]]) -> dict[str, float]:
+    """Effective sample size, computed two ways, gated on the lower.
+
+    There is a real choice about which series carries the overlap between
+    consecutive forecasts, and the two answers diverge by a factor of ~2.5:
+
+      - **residual** — how correlated the system's *errors* are. If the model
+        genuinely captures momentum, its errors decorrelate and n_eff
+        approaches n. Risks overstating the evidence when errors only look
+        independent.
+      - **outcome** — how correlated the *price changes themselves* are. Gas
+        prices are persistently autocorrelated whether or not the model is any
+        good, so this pins the discount near a constant fraction of n. Risks
+        sitting on a sound result for months.
+
+    Reporting both costs nothing and the gap between them is informative in its
+    own right: if they stay close, the model is not actually removing the
+    day-to-day overlap, which neither number alone would tell you. Conclusions
+    gate on the smaller, so the cautious reading always wins.
+    """
+    n_resid, r_resid = effective_n([row["z"] for row in rows])
+    n_outcome, r_outcome = effective_n([row["actual_c"] for row in rows])
+    return {
+        "n": float(len(rows)),
+        "residual": n_resid,
+        "residual_r": r_resid,
+        "outcome": n_outcome,
+        "outcome_r": r_outcome,
+        "binding": min(n_resid, n_outcome),
+        "binding_name": "residual" if n_resid <= n_outcome else "outcome",
+    }
 
 
 def brier(scored: list[dict[str, object]], threshold_c: float) -> dict[str, float] | None:
@@ -318,14 +355,32 @@ def render(
     for mode, rows in by_mode.items():
         if not rows:
             continue
-        n_eff, r = effective_n([row["z"] for row in rows])
+        size = sample_size(rows)
+        n_eff = size["binding"]
 
         add(f"### mode = `{mode}` (n = {len(rows)})")
         add("")
         add(
-            f"- Effective n: **{n_eff:.1f}** (lag-1 autocorrelation of z: "
-            f"{r:+.2f})"
+            f"- Effective n, by error correlation: **{size['residual']:.1f}** "
+            f"(lag-1 r = {size['residual_r']:+.2f})"
         )
+        add(
+            f"- Effective n, by price-change correlation: "
+            f"**{size['outcome']:.1f}** (lag-1 r = {size['outcome_r']:+.2f})"
+        )
+        add(
+            f"- **Gating on the lower: n_eff = {n_eff:.1f}** "
+            f"(the {size['binding_name']} figure)."
+        )
+        if size["n"] >= 3 and size["outcome"] > 0:
+            ratio = size["residual"] / size["outcome"]
+            if ratio < 1.25:
+                add(
+                    "- The two figures are close, which means the model is not "
+                    "yet removing much of the day-to-day overlap between "
+                    "consecutive forecasts."
+                )
+        add("")
 
         if n_eff < N_EFF_NOTHING:
             add(
