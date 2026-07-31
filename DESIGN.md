@@ -21,7 +21,7 @@ written, with one correction noted in §2._
 | M1 — forecast in prior mode | done. `forecast/forecast.py`, wired into the daily job. |
 | M2 — scoring | done. `forecast/score.py` → `CONTEXT.md`. |
 | M3 — fitted model | done and tested against synthetic data. **Dormant until 30 training rows exist** (~2026-08-30 at one row/day). |
-| M4 — review routine | done. Weekly Cloud Routine, Mondays 14:23 UTC. |
+| M4 — review routine | **prompt written, Routine not created.** Creating it needs a tool approval this session did not have. Prompt and cron are in `forecast/REVIEW_ROUTINE.md`, ready to create. Deliberately *not* implemented with a session-scoped cron: those expire after 7 days, which §8 rules out. |
 | M5 — replace the prior with measurement | **blocked.** Needs n ≥ 60, i.e. no earlier than ~2026-09-28. |
 
 Decisions taken against §11's open questions:
