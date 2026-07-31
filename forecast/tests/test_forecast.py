@@ -338,6 +338,62 @@ class HumanReadableOutput(unittest.TestCase):
             self.assertNotIn("Most recent scored call", context.read_text(encoding="utf-8"))
 
 
+class CoefficientReporting(unittest.TestCase):
+    """CONTEXT.md surfaces what the fitted model is actually keying on."""
+
+    def render_for(self, tmp: str, days: int) -> str:
+        obs, forecasts, context = (
+            Path(tmp) / "obs.csv",
+            Path(tmp) / "forecasts.csv",
+            Path(tmp) / "CONTEXT.md",
+        )
+        write_observations(obs, random_walk(days))
+        run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+        run_score(
+            [
+                "--observations", str(obs),
+                "--forecasts", str(forecasts),
+                "--out", str(context),
+            ]
+        )
+        return context.read_text(encoding="utf-8")
+
+    def test_says_not_fitted_before_min_train(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            text = self.render_for(tmp, 10)
+            self.assertIn("## What the model is keying on", text)
+            self.assertIn("**Not fitted yet.**", text)
+            self.assertIn("needs 30 complete training rows", text)
+
+    def test_reports_weights_once_fitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            text = self.render_for(tmp, 90)
+            self.assertIn("## What the model is keying on", text)
+            self.assertNotIn("**Not fitted yet.**", text)
+            self.assertIn("| feature | weight | what it is |", text)
+            for name in feat.FEATURE_NAMES:
+                self.assertIn(f"| `{name}` |", text, f"{name} missing from table")
+            self.assertIn("Largest: `", text)
+
+    def test_weights_are_sorted_by_magnitude(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "obs.csv"
+            write_observations(obs, random_walk(90))
+            prices = feat.load_observations(obs)
+            weights, n_train = sc.current_coefficients(prices)
+
+            self.assertIsNotNone(weights)
+            self.assertGreaterEqual(n_train, mdl.MIN_TRAIN)
+            magnitudes = [abs(w) for _, w in weights]
+            self.assertEqual(magnitudes, sorted(magnitudes, reverse=True))
+            self.assertEqual({n for n, _ in weights}, set(feat.FEATURE_NAMES))
+
+    def test_no_coefficients_from_an_empty_series(self):
+        weights, n_train = sc.current_coefficients({})
+        self.assertIsNone(weights)
+        self.assertEqual(n_train, 0)
+
+
 class SampleSizeReportsBoth(unittest.TestCase):
     """n_eff is computed two ways and gated on the lower of them."""
 
