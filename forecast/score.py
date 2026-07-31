@@ -237,6 +237,52 @@ def pit_summary(scored: list[dict[str, object]]) -> dict[str, float] | None:
     }
 
 
+FEATURE_GLOSS = {
+    "d1": "yesterday's change",
+    "d2": "the change 2 days ago",
+    "d3": "the change 3 days ago",
+    "ma3": "mean of the last 3 daily changes",
+    "ma7": "mean of the last 7 daily changes",
+    "vol7": "volatility of the last 7 daily changes",
+    "wk": "7-day change",
+    "dow": "day of week (of the target)",
+}
+
+
+def current_coefficients(
+    prices: dict[date_cls, float]
+) -> tuple[list[tuple[str, float]] | None, int]:
+    """Refit on everything observed so far and return the standardised weights.
+
+    Computed fresh at report time rather than stored per forecast row: this
+    answers "what does the model believe *now*", which is a property of the
+    current data, not of any one past prediction. Storing it per row would also
+    put eight numbers on every line of an append-only file to say something that
+    barely changes day to day.
+
+    Returns (weights_sorted_by_magnitude, n_train); weights is None when there
+    is not yet enough history to fit.
+    """
+    if not prices:
+        return None, 0
+
+    rows, targets = feat.training_set(prices, max(prices))
+    try:
+        import model as mdl  # noqa: PLC0415 — keep numpy off the import path
+    except ImportError:
+        # numpy missing. The rest of the report is still worth producing;
+        # a missing optional section beats no CONTEXT.md at all.
+        return None, len(targets)
+
+    if len(targets) < mdl.MIN_TRAIN:
+        return None, len(targets)
+
+    weights = mdl.coefficients(rows, targets)
+    pairs = list(zip(feat.FEATURE_NAMES, weights))
+    pairs.sort(key=lambda pair: abs(pair[1]), reverse=True)
+    return pairs, len(targets)
+
+
 def fmt(value: float | None, places: int = 3) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "n/a"
@@ -316,6 +362,52 @@ def render(
             f"actual **{latest['actual_c']:+.2f}c**, error **{error:+.2f}c**."
         )
         add("")
+
+    # --- what the model is currently keying on ----------------------------
+    weights, n_train = current_coefficients(prices)
+    add("## What the model is keying on")
+    add("")
+    if weights is None:
+        add(
+            "**Not fitted yet.** The ridge model needs 30 complete training "
+            f"rows and has **{n_train}**. Until then every forecast comes from "
+            "the bootstrap prior, which is a rule of thumb with no coefficients "
+            "to show."
+        )
+    else:
+        add(
+            f"Standardised ridge coefficients, refit on all **{n_train}** "
+            "training rows available today. Units are cents of predicted "
+            "next-day change per one standard deviation of the feature, so the "
+            "magnitudes are directly comparable to each other."
+        )
+        add("")
+        add("| feature | weight | what it is |")
+        add("|---|---|---|")
+        for name, weight in weights:
+            add(f"| `{name}` | {weight:+.3f} | {FEATURE_GLOSS.get(name, '')} |")
+        add("")
+        top, second = weights[0], weights[1] if len(weights) > 1 else None
+        add(
+            f"Largest: `{top[0]}` at {top[1]:+.3f}"
+            + (
+                f", {abs(top[1]) / abs(second[1]):.1f}× the next-largest "
+                f"(`{second[0]}`)."
+                if second and abs(second[1]) > 1e-9
+                else "."
+            )
+        )
+        add("")
+        add(
+            "DESIGN.md §10 found on weekly data that last period's change "
+            "dominates everything else by roughly 3×, with the mechanism being "
+            "staggered repricing — stations don't all move at once, so a shock "
+            "keeps propagating for days. **If `d1` is not on top here, that is "
+            "a genuine finding about daily data**, not a bug: it would mean the "
+            "daily dynamics differ from the weekly ones this design was built "
+            "on. Worth investigating before trusting the forecasts."
+        )
+    add("")
 
     if not scored:
         add("## Calibration")
