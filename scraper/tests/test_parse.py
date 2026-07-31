@@ -11,8 +11,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aaa_gas_prices import (  # noqa: E402
+    BACKFILL_SOURCE,
     Reading,
     ScrapeError,
+    backfill,
+    check_revision,
+    parse_fuel_gauge,
     parse_national_average,
     read_existing,
     write_csv,
@@ -89,12 +93,12 @@ class WriteCsv(unittest.TestCase):
             self.assertFalse(write_csv(path, self.reading("2026-07-30", 9.999)))
             rows = read_existing(path)
             self.assertEqual([r["date"] for r in rows], ["2026-07-29", "2026-07-30"])
-            self.assertEqual(rows[1]["regular"], "4.091")
+            self.assertEqual(rows[1]["regular"], "4.0910")
             self.assertEqual(rows[1]["premium"], "")
 
             # ...unless forced.
             self.assertTrue(write_csv(path, self.reading("2026-07-30", 9.999), force=True))
-            self.assertEqual(read_existing(path)[1]["regular"], "9.999")
+            self.assertEqual(read_existing(path)[1]["regular"], "9.9990")
 
     def test_keeps_rows_sorted_by_date(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,6 +109,120 @@ class WriteCsv(unittest.TestCase):
                 [r["date"] for r in read_existing(path)],
                 ["2026-07-28", "2026-07-30"],
             )
+
+
+class FuelGaugeLags(unittest.TestCase):
+    """DESIGN.md §5.1 — the lag rows AAA already renders on the same page."""
+
+    def test_captures_every_labelled_row(self):
+        gauge = parse_fuel_gauge(FIXTURE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            set(gauge),
+            {"current", "yesterday", "week_ago", "month_ago", "year_ago"},
+        )
+        self.assertEqual(gauge["yesterday"]["regular"], 4.086)
+        self.assertEqual(gauge["week_ago"]["regular"], 4.042)
+        self.assertEqual(gauge["month_ago"]["regular"], 3.918)
+        self.assertEqual(gauge["year_ago"]["regular"], 3.512)
+
+    def test_reading_stores_lags_to_four_places(self):
+        gauge = parse_fuel_gauge(FIXTURE.read_text(encoding="utf-8"))
+        reading = Reading(
+            date="2026-07-30",
+            prices=gauge["current"],
+            retrieved_at_utc="2026-07-30T13:00:00+00:00",
+            lags={k: gauge[k]["regular"] for k in ("yesterday", "week_ago", "month_ago", "year_ago")},
+        )
+        row = reading.as_row()
+        self.assertEqual(row["regular"], "4.0910")
+        self.assertEqual(row["regular_yesterday"], "4.0860")
+        self.assertEqual(row["regular_year_ago"], "3.5120")
+
+
+class GapRepair(unittest.TestCase):
+    """§9: deleting a middle row and re-running backfill reconstructs it."""
+
+    def series(self, path):
+        for day, price, yesterday in (
+            ("2026-07-28", 4.0710, 4.0700),
+            ("2026-07-29", 4.0810, 4.0710),
+            ("2026-07-30", 4.0980, 4.0810),
+        ):
+            write_csv(
+                path,
+                Reading(
+                    date=day,
+                    prices={"regular": price},
+                    retrieved_at_utc=f"{day}T13:00:00+00:00",
+                    lags={"yesterday": yesterday},
+                ),
+            )
+
+    def test_reconstructs_a_deleted_middle_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obs.csv"
+            self.series(path)
+
+            rows = [r for r in read_existing(path) if r["date"] != "2026-07-29"]
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                import csv as _csv
+
+                writer = _csv.DictWriter(handle, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+            self.assertEqual([r["date"] for r in read_existing(path)], ["2026-07-28", "2026-07-30"])
+
+            # 07-29 is the gap being repaired; 07-27 falls out of the earliest
+            # row's own `yesterday`, which extends the series one day backward.
+            # That is real AAA data too, so it is kept rather than suppressed.
+            added = backfill(path)
+            self.assertEqual(added, ["2026-07-27", "2026-07-29"])
+
+            repaired = read_existing(path)
+            self.assertEqual(
+                [r["date"] for r in repaired],
+                ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30"],
+            )
+            recovered = next(r for r in repaired if r["date"] == "2026-07-29")
+            self.assertEqual(recovered["regular"], "4.0810")
+            # Only `regular` is recoverable this way, and the row says so.
+            self.assertEqual(recovered["premium"], "")
+            self.assertEqual(recovered["source_url"], BACKFILL_SOURCE)
+
+    def test_backfill_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obs.csv"
+            self.series(path)
+            self.assertEqual(backfill(path), ["2026-07-27"])
+            self.assertEqual(backfill(path), [])
+
+
+class RevisionDetection(unittest.TestCase):
+    """§8 M0 — warn when AAA's 'yesterday' disagrees with what we stored."""
+
+    def reading(self, claimed_yesterday):
+        return Reading(
+            date="2026-07-30",
+            prices={"regular": 4.0980},
+            retrieved_at_utc="2026-07-30T13:00:00+00:00",
+            lags={"yesterday": claimed_yesterday},
+        )
+
+    def stored(self, price):
+        return [{"date": "2026-07-29", "regular": f"{price:.4f}"}]
+
+    def test_silent_when_they_agree(self):
+        self.assertIsNone(check_revision(self.stored(4.0810), self.reading(4.0810)))
+
+    def test_warns_when_aaa_revised(self):
+        warning = check_revision(self.stored(4.0810), self.reading(4.0830))
+        self.assertIsNotNone(warning)
+        self.assertIn("4.0830", warning)
+        self.assertIn("4.0810", warning)
+        self.assertIn("+0.0020", warning)
+
+    def test_silent_with_no_prior_row(self):
+        self.assertIsNone(check_revision([], self.reading(4.0810)))
 
 
 if __name__ == "__main__":
