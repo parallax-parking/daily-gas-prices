@@ -1,0 +1,4 @@
+# numpy is the only dependency: it solves the ridge normal equations.
+# Deliberately no scipy (one function, math.erfc covers it) and no scikit-learn
+# (a Ridge closed form is four lines and keeps the CI job under two seconds).
+numpy>=1.26

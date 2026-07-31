@@ -2,9 +2,18 @@ name: AAA national average
 
 on:
   schedule:
-    # 13:00 UTC daily = 9am ET in summer, 8am ET in winter. AAA posts the new
-    # national average early each morning ET.
-    - cron: "0 13 * * *"
+    # 13:17 UTC daily = 9:17am ET in summer, 8:17am ET in winter. AAA posts the
+    # new national average early each morning ET.
+    #
+    # The :17 is deliberate. Two reasons:
+    #   - Top-of-hour is where every other repo's cron lands, and GitHub drops
+    #     scheduled runs under load rather than queueing them indefinitely.
+    #   - Scheduled runs fire up to ~30 minutes late. If the effective read time
+    #     ever drifts across AAA's own refresh, we would capture pre- and
+    #     post-update values on different days — silently corrupting exactly the
+    #     digit this whole pipeline is built to measure. An off-peak minute
+    #     keeps the drift band away from the boundary.
+    - cron: "17 13 * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -29,7 +38,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: scraper/requirements*.txt
+          cache-dependency-path: |
+            scraper/requirements*.txt
+            forecast/requirements.txt
 
       - name: Install dependencies
         env:
@@ -40,9 +51,12 @@ jobs:
           else
             pip install -r scraper/requirements.txt
           fi
+          pip install -r forecast/requirements.txt
 
       - name: Run tests
-        run: python -m unittest discover -s scraper/tests
+        run: |
+          python -m unittest discover -s scraper/tests
+          python -m unittest discover -s forecast/tests
 
       - name: Scrape today's national average
         env:
@@ -53,15 +67,27 @@ jobs:
             --out data/aaa_national_average.csv \
             ${{ inputs.force && '--force' || '' }}
 
+      # Score BEFORE forecasting. Scoring consumes the reading that just
+      # landed; forecasting takes that same reading as an input. Reversed, we
+      # would be scoring a forecast against its own input — DESIGN.md §3
+      # invariant 4. These three steps stay in one job so they share a working
+      # tree and land in a single commit, keeping commit order faithful to the
+      # order in which the forecast and its outcome actually existed.
+      - name: Score yesterday's forecast
+        run: python forecast/score.py --out CONTEXT.md
+
+      - name: Forecast tomorrow
+        run: python forecast/forecast.py --out data/forecasts.csv
+
       - name: Commit the new row
         run: |
-          if [ -z "$(git status --porcelain data/aaa_national_average.csv)" ]; then
+          if [ -z "$(git status --porcelain data CONTEXT.md)" ]; then
             echo "No change — already have today's reading."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/aaa_national_average.csv
+          git add data CONTEXT.md
           git commit -m "data: AAA national average for $(date -u +%F)"
           for attempt in 1 2 3 4; do
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
