@@ -69,6 +69,14 @@ Two guards `CONTEXT.md` applies automatically:
   that nothing is concludable, rather than printing a number that invites
   over-reading.
 
+  `n_eff` is computed two ways — from how correlated the *errors* are, and from
+  how correlated the *price changes* are — and conclusions gate on the lower of
+  the two. The first relaxes as the model improves; the second stays pinned near
+  a constant fraction of `n` because gas prices are autocorrelated whether or
+  not the model is any good. When the two figures sit close together, the model
+  is not yet removing the overlap between consecutive days, and `CONTEXT.md`
+  says so.
+
 ## Known limitations
 
 - **The model is deaf to news.** Its worst call in 160 holdout weeks was

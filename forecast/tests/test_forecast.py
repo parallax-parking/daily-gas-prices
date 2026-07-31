@@ -338,6 +338,71 @@ class HumanReadableOutput(unittest.TestCase):
             self.assertNotIn("Most recent scored call", context.read_text(encoding="utf-8"))
 
 
+class SampleSizeReportsBoth(unittest.TestCase):
+    """n_eff is computed two ways and gated on the lower of them."""
+
+    def rows(self, z_series, actual_series):
+        return [
+            {"z": z, "actual_c": a} for z, a in zip(z_series, actual_series)
+        ]
+
+    def test_gates_on_the_lower_figure(self):
+        # Errors look independent (alternating), price changes do not (sine).
+        independent = [(-1) ** i * 0.5 for i in range(60)]
+        correlated = [math.sin(i / 8.0) for i in range(60)]
+
+        size = sc.sample_size(self.rows(independent, correlated))
+        self.assertGreater(size["residual"], size["outcome"])
+        self.assertEqual(size["binding"], size["outcome"])
+        self.assertEqual(size["binding_name"], "outcome")
+
+        # And the other way round.
+        flipped = sc.sample_size(self.rows(correlated, independent))
+        self.assertEqual(flipped["binding"], flipped["residual"])
+        self.assertEqual(flipped["binding_name"], "residual")
+
+    def test_context_shows_both_figures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs, forecasts, context = (
+                Path(tmp) / "obs.csv",
+                Path(tmp) / "forecasts.csv",
+                Path(tmp) / "CONTEXT.md",
+            )
+            series = random_walk(40)
+            for cut in range(2, len(series)):
+                write_observations(obs, series[:cut])
+                run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+            write_observations(obs, series)
+            run_score(
+                [
+                    "--observations", str(obs),
+                    "--forecasts", str(forecasts),
+                    "--out", str(context),
+                ]
+            )
+
+            text = context.read_text(encoding="utf-8")
+            self.assertIn("Effective n, by error correlation", text)
+            self.assertIn("Effective n, by price-change correlation", text)
+            self.assertIn("Gating on the lower", text)
+
+    def test_effective_n_never_exceeds_nominal_n(self):
+        """Anti-correlated errors must not manufacture evidence out of nowhere."""
+        alternating = [(-1) ** i * 1.0 for i in range(40)]
+        n_eff, r = sc.effective_n(alternating)
+        self.assertLess(r, 0.0, "alternating series is negatively autocorrelated")
+        self.assertLessEqual(n_eff, 40.0)
+
+    def test_gate_uses_the_conservative_number(self):
+        """A sample the residual view would clear must still be gated by the
+        outcome view when the outcome series is strongly autocorrelated."""
+        independent = [(-1) ** i * 0.5 for i in range(60)]
+        correlated = [math.sin(i / 12.0) for i in range(60)]
+        size = sc.sample_size(self.rows(independent, correlated))
+        self.assertGreaterEqual(size["residual"], sc.N_EFF_DIRECTIONAL)
+        self.assertLess(size["binding"], sc.N_EFF_DIRECTIONAL)
+
+
 class EffectiveN(unittest.TestCase):
     def test_correlated_series_reports_fewer_effective_observations(self):
         independent = [(-1) ** i * 0.5 for i in range(60)]
