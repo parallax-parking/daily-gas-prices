@@ -275,6 +275,69 @@ class SyntheticCalibration(unittest.TestCase):
             self.assertIn("never pooled", text)
 
 
+class HumanReadableOutput(unittest.TestCase):
+    """Ported from the parallel draft: absolute prices and a concrete last call."""
+
+    def test_forecast_echoes_thresholds_as_absolute_prices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "obs.csv"
+            out = Path(tmp) / "forecasts.csv"
+            write_observations(obs, [("2026-07-30", 4.0980)])
+
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                fc.main(["--observations", str(obs), "--out", str(out)])
+            printed = buffer.getvalue()
+
+            self.assertIn("level $4.0980", printed)
+            # +1c above a $4.0980 level is $4.1080 — the translation a human can
+            # check against a pump price without doing arithmetic.
+            self.assertIn("P(change > +1c)", printed)
+            self.assertIn("P(price > $4.1080)", printed)
+            self.assertIn("P(price > $4.0780)", printed)  # -2c
+            self.assertIn("[prior, n_train=0]", printed)
+
+    def test_context_reports_the_most_recent_scored_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "obs.csv"
+            forecasts = Path(tmp) / "forecasts.csv"
+            context = Path(tmp) / "CONTEXT.md"
+
+            write_observations(obs, [("2026-07-30", 4.0000)])
+            run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+            # Outcome lands: +1.50c against a prior forecast of exactly 0.00c.
+            write_observations(obs, [("2026-07-30", 4.0000), ("2026-07-31", 4.0150)])
+            run_score(
+                [
+                    "--observations", str(obs),
+                    "--forecasts", str(forecasts),
+                    "--out", str(context),
+                ]
+            )
+
+            text = context.read_text(encoding="utf-8")
+            self.assertIn("Most recent scored call — `2026-07-31`", text)
+            self.assertIn("predicted **+0.00c**", text)
+            self.assertIn("actual **+1.50c**", text)
+            self.assertIn("error **+1.50c**", text)
+
+    def test_no_recent_call_line_before_anything_is_scored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs = Path(tmp) / "obs.csv"
+            forecasts = Path(tmp) / "forecasts.csv"
+            context = Path(tmp) / "CONTEXT.md"
+            write_observations(obs, [("2026-07-30", 4.0980)])
+            run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+            run_score(
+                [
+                    "--observations", str(obs),
+                    "--forecasts", str(forecasts),
+                    "--out", str(context),
+                ]
+            )
+            self.assertNotIn("Most recent scored call", context.read_text(encoding="utf-8"))
+
+
 class EffectiveN(unittest.TestCase):
     def test_correlated_series_reports_fewer_effective_observations(self):
         independent = [(-1) ** i * 0.5 for i in range(60)]

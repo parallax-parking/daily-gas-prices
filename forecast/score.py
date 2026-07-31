@@ -268,6 +268,18 @@ def render(
     add(f"- Awaiting outcome: **{len(pending)}**")
     add("")
 
+    if scored:
+        # One concrete call, stated plainly. A fresh reader gets something they
+        # can check against reality before wading into any aggregate.
+        latest = max(scored, key=lambda r: r["target_date"])
+        error = latest["actual_c"] - latest["mu_c"]
+        add(
+            f"Most recent scored call — `{latest['target_date']}` "
+            f"(`{latest['mode']}` mode): predicted **{latest['mu_c']:+.2f}c**, "
+            f"actual **{latest['actual_c']:+.2f}c**, error **{error:+.2f}c**."
+        )
+        add("")
+
     if not scored:
         add("## Calibration")
         add("")

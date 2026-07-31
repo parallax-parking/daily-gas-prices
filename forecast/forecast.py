@@ -158,11 +158,20 @@ def main(argv: list[str] | None = None) -> int:
     row = build_row(prices, made_on, args.grade)
     append(args.out, row)
 
+    # Each threshold is echoed back as an absolute price as well as a relative
+    # change. The stored form has to be relative (§6.4), but "P(price >
+    # $4.1080)" is what a human can sanity-check at a glance against the pump.
+    level = float(row["level_at_forecast"])
     print(
-        f"{row['target_date']} {args.grade}: mu={row['mu_cents']}c "
-        f"sigma={row['sigma_cents']}c mode={row['mode']} n_train={row['n_train']} "
-        f"P(up)={row['p_gt_0c']}"
+        f"{row['target_date']} {args.grade}: level ${level:.4f}  "
+        f"mu {float(row['mu_cents']):+.2f}c  sigma {float(row['sigma_cents']):.2f}c  "
+        f"[{row['mode']}, n_train={row['n_train']}]"
     )
+    for threshold, column in zip(THRESHOLDS_C, PROB_COLUMNS):
+        print(
+            f"    P(change > {threshold:+.0f}c) = {float(row[column]) * 100:5.1f}%"
+            f"   i.e. P(price > ${level + threshold / 100.0:.4f})"
+        )
     return 0
 
 
