@@ -338,6 +338,85 @@ class HumanReadableOutput(unittest.TestCase):
             self.assertNotIn("Most recent scored call", context.read_text(encoding="utf-8"))
 
 
+class SpreadVerdict(unittest.TestCase):
+    """sigma is checked in both directions, and neither flag fires early."""
+
+    BIG_N = sc.MIN_N_EFF_FOR_SPREAD_FLAG + 5
+
+    def test_flags_overconfidence(self):
+        line = sc.spread_verdict(1.60, self.BIG_N)
+        self.assertIn("Overconfident", line)
+        self.assertIn("narrower than the errors justify", line)
+
+    def test_flags_underconfidence(self):
+        line = sc.spread_verdict(0.50, self.BIG_N)
+        self.assertIn("Underconfident", line)
+        self.assertIn("wider than the errors justify", line)
+
+    def test_silent_inside_the_band(self):
+        for ratio in (0.80, 1.00, 1.20):
+            line = sc.spread_verdict(ratio, self.BIG_N)
+            self.assertIn("Spread looks right", line, f"ratio={ratio}")
+            self.assertNotIn("⚠︎", line)
+
+    def test_boundaries_do_not_fire(self):
+        """The thresholds are exclusive — exactly on the line is not a flag."""
+        for ratio in (sc.UNDERCONFIDENCE_RATIO, sc.OVERCONFIDENCE_RATIO):
+            line = sc.spread_verdict(ratio, self.BIG_N)
+            self.assertNotIn("⚠︎", line, f"ratio={ratio} should not flag")
+
+    def test_held_below_the_n_eff_gate(self):
+        """A wildly miscalibrated ratio still must not flag on thin evidence."""
+        for ratio in (0.10, 5.00):
+            line = sc.spread_verdict(ratio, 3.0)
+            self.assertIn("held", line)
+            self.assertNotIn("⚠︎", line, f"ratio={ratio} fired below the gate")
+            self.assertIn("not yet evidence", line)
+
+    def test_held_message_describes_the_direction_correctly(self):
+        """ratio = residual_sd / sigma, so a high ratio means errors WIDER than
+        sigma. Getting this backwards would tell a reader to adjust sigma the
+        wrong way — and it is the only place the report names a direction
+        without also naming the flag."""
+        wide = sc.spread_verdict(3.00, 3.0)
+        self.assertIn("wider than the claimed sigma", wide)
+
+        narrow = sc.spread_verdict(0.30, 3.0)
+        self.assertIn("narrower than the claimed sigma", narrow)
+
+        matched = sc.spread_verdict(1.00, 3.0)
+        self.assertIn("close to the claimed sigma", matched)
+
+    def test_handles_undefined_ratio(self):
+        line = sc.spread_verdict(float("nan"), self.BIG_N)
+        self.assertIn("not enough scored forecasts", line)
+        self.assertNotIn("⚠︎", line)
+
+    def test_appears_in_context_and_is_held_early(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            obs, forecasts, context = (
+                Path(tmp) / "obs.csv",
+                Path(tmp) / "forecasts.csv",
+                Path(tmp) / "CONTEXT.md",
+            )
+            series = random_walk(12)
+            for cut in range(2, len(series)):
+                write_observations(obs, series[:cut])
+                run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+            write_observations(obs, series)
+            run_score(
+                [
+                    "--observations", str(obs),
+                    "--forecasts", str(forecasts),
+                    "--out", str(context),
+                ]
+            )
+            text = context.read_text(encoding="utf-8")
+            self.assertIn("Spread check: **held**", text)
+            self.assertNotIn("Overconfident", text)
+            self.assertNotIn("Underconfident", text)
+
+
 class CoefficientReporting(unittest.TestCase):
     """CONTEXT.md surfaces what the fitted model is actually keying on."""
 

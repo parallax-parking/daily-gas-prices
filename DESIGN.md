@@ -290,8 +290,24 @@ evidence about model skill.
   Bins: `[0,.1,.3,.5,.7,.9,1]`. Bins with n<3 suppressed.
 - **PIT** — `Φ((actual - mu)/sigma)` should be uniform; reports the mean (target
   0.500) and 80% interval coverage (target 80%).
-- **Overconfidence check** — residual sd vs claimed sigma. Flagged if residual
-  sd exceeds 1.25× sigma.
+- **Spread check** — residual sd vs claimed sigma, flagged in **both**
+  directions. Above 1.25× is overconfidence: intervals narrower than the errors
+  justify, which invites acting on precision that isn't there. Below 0.75× is
+  underconfidence: intervals wider than the errors justify, which drags every
+  threshold probability toward 50% until the forecast stops distinguishing one
+  day from another. Overconfidence is the more dangerous failure and was built
+  first; underconfidence is the quieter one, since a vague forecast is never
+  badly wrong and so never looks broken.
+
+  Both flags are gated at `n_eff >= 20`. A residual sd computed from a handful
+  of correlated days says nothing about sigma, and a flag that fires in week one
+  is a flag nobody reads in month six. Below the gate the report says the check
+  is held and states which way the ratio currently leans, without treating it as
+  evidence.
+
+  This check is also the earliest read on `PRIOR_SIGMA_C` (§6.5): a persistent
+  underconfidence flag in `prior` mode is direct evidence the 1.0c guess is too
+  high, which is exactly what M5 exists to replace.
 - **Effective n**, not nominal n. Consecutive daily forecasts are nearly the
   same bet. Uses the lag-1 autocorrelation adjustment `n_eff = n(1-r)/(1+r)`,
   computed **two ways**, and gates on the lower:

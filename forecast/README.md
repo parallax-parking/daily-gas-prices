@@ -60,7 +60,7 @@ thresholds routinely resolve before they are asked; a Brier near zero against a
 base rate of 0 or 1 measures nothing. Do not average across the grid and quote
 the result as "the Brier score."
 
-Two guards `CONTEXT.md` applies automatically:
+Three guards `CONTEXT.md` applies automatically:
 
 - **`prior` and `model` rows are never pooled.** Bootstrap output says nothing
   about model skill.
@@ -76,6 +76,14 @@ Two guards `CONTEXT.md` applies automatically:
   not the model is any good. When the two figures sit close together, the model
   is not yet removing the overlap between consecutive days, and `CONTEXT.md`
   says so.
+
+- **The spread check runs in both directions.** Residual sd more than 1.25×
+  the claimed sigma is overconfidence — intervals narrower than the errors
+  justify. Below 0.75× is underconfidence — intervals so wide that every
+  probability drifts toward 50% and the forecast stops telling one day from
+  another. The second failure is easy to miss precisely because it never looks
+  wrong. Both are gated at `n_eff >= 20`; below that the report says the check
+  is held rather than firing on noise.
 
 ## Known limitations
 

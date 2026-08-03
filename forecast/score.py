@@ -54,6 +54,18 @@ N_EFF_DIRECTIONAL = 50
 # advertising more precision than it has.
 OVERCONFIDENCE_RATIO = 1.25
 
+# ...and this much smaller means the opposite: intervals wider than the errors
+# justify. Less dangerous than overconfidence — a vague forecast misleads nobody
+# — but still miscalibration, and it makes every probability drift toward 50%,
+# which is the same as having no opinion. Both bands are deliberately loose so
+# ordinary sampling noise doesn't trip them.
+UNDERCONFIDENCE_RATIO = 0.75
+
+# Neither flag fires below this many effective observations. A residual sd
+# computed from a handful of correlated days says nothing about sigma, and a
+# flag that cries wolf in month one is a flag nobody reads in month six.
+MIN_N_EFF_FOR_SPREAD_FLAG = N_EFF_NOTHING
+
 
 def normal_cdf(z: float) -> float:
     return 0.5 * math.erfc(-z / math.sqrt(2.0))
@@ -281,6 +293,59 @@ def current_coefficients(
     pairs = list(zip(feat.FEATURE_NAMES, weights))
     pairs.sort(key=lambda pair: abs(pair[1]), reverse=True)
     return pairs, len(targets)
+
+
+def spread_verdict(ratio: float, n_eff: float) -> str:
+    """One line on whether sigma matches the errors it is supposed to describe.
+
+    Miscalibration runs in both directions and the report used to name only one
+    of them. Overconfidence — intervals narrower than the errors justify — is
+    the dangerous side, because it invites acting on precision that isn't there.
+    Underconfidence is the quieter failure: every probability drifts toward 50%,
+    the forecast stops distinguishing between days, and it looks well behaved
+    the whole time because it is never badly wrong.
+
+    Both are gated on n_eff. A residual sd from a handful of correlated days is
+    noise, and a flag that fires in week one is a flag nobody reads in month six.
+    """
+    if math.isnan(ratio):
+        return "- Spread check: not enough scored forecasts to compare yet."
+
+    if n_eff < MIN_N_EFF_FOR_SPREAD_FLAG:
+        # Subject of the sentence is the errors, not the intervals, and the two
+        # run opposite ways: ratio = residual_sd / sigma, so a high ratio means
+        # errors *wider* than sigma (and therefore intervals too narrow).
+        direction = (
+            "wider than"
+            if ratio > OVERCONFIDENCE_RATIO
+            else "narrower than" if ratio < UNDERCONFIDENCE_RATIO else "close to"
+        )
+        return (
+            f"- Spread check: **held** at n_eff = {n_eff:.1f} (needs "
+            f"{MIN_N_EFF_FOR_SPREAD_FLAG}). Errors currently look {direction} "
+            "the claimed sigma, but that comparison is not yet evidence."
+        )
+
+    if ratio > OVERCONFIDENCE_RATIO:
+        return (
+            f"- ⚠︎ **Overconfident.** Residual spread is {ratio:.2f}× the claimed "
+            f"sigma, past the {OVERCONFIDENCE_RATIO}× line. The intervals are "
+            "narrower than the errors justify, so the stated probabilities "
+            "promise more precision than the model has."
+        )
+    if ratio < UNDERCONFIDENCE_RATIO:
+        return (
+            f"- ⚠︎ **Underconfident.** Residual spread is {ratio:.2f}× the "
+            f"claimed sigma, below the {UNDERCONFIDENCE_RATIO}× line. The "
+            "intervals are wider than the errors justify, which pulls every "
+            "threshold probability toward 50% and costs the forecast its "
+            "ability to distinguish one day from another. Less harmful than "
+            "overconfidence, but it means sigma is set too high — see M5."
+        )
+    return (
+        f"- Spread looks right: residual sd is {ratio:.2f}× the claimed sigma, "
+        f"inside the {UNDERCONFIDENCE_RATIO}–{OVERCONFIDENCE_RATIO}× band."
+    )
 
 
 def fmt(value: float | None, places: int = 3) -> str:
@@ -529,12 +594,7 @@ def render(
                 f"- Residual sd {cents(pit['residual_sd'])} vs claimed sigma "
                 f"{cents(pit['claimed_sigma'])} (ratio {fmt(pit['ratio'], 2)})"
             )
-            if not math.isnan(pit["ratio"]) and pit["ratio"] > OVERCONFIDENCE_RATIO:
-                add(
-                    f"- ⚠︎ **Overconfident.** Residual spread exceeds "
-                    f"{OVERCONFIDENCE_RATIO}× the claimed sigma. The intervals "
-                    "are narrower than the errors justify."
-                )
+            add(spread_verdict(pit["ratio"], n_eff))
             add("")
 
         curve = reliability(rows)
