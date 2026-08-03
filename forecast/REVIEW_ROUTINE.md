@@ -114,13 +114,13 @@ fresh session per firing. To change the schedule or the prompt, update the
 trigger in place rather than deleting and recreating it — that keeps the run
 history. It can also be paused (disabled) without losing anything.
 
-One thing to confirm on the first live firing: the create call warned that the
-Routine stores no claude.ai connectors, so its sessions get no `mcp__<server>__*`
-connector tools. GitHub access in a Claude Code Cloud session comes from the
-environment's repo sources rather than from a connector, so issue-opening is
-expected to work — but that is an expectation, not something verified here. If
-the first run cannot reach GitHub, recreate the Routine from a session that
-holds the needed grants, or from the claude.ai Routines UI.
+**GitHub access is confirmed working.** The create call warned that the Routine
+stores no claude.ai connectors, so its sessions get no `mcp__<server>__*`
+connector tools, leaving it an open question whether it could reach the repo at
+all. The first firing (2026-08-03 14:23 UTC) settled it: the run read
+`data/aaa_national_average.csv` and `CONTEXT.md`, and enumerated all seven
+`AAA national average` Actions runs — the last of which requires real GitHub API
+access, not just a clone. Nothing needs granting.
 
 ## When it starts mattering
 
