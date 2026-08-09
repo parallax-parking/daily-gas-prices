@@ -11,10 +11,13 @@ scorer keep the populations apart.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import numpy as np
+
+# Re-exported so callers that already import model keep working; the single
+# definition lives in thresholds.py, which needs it without pulling in numpy.
+from thresholds import prob_greater_than  # noqa: F401
 
 MODEL_VERSION = "ridge-a5-v1"
 
@@ -136,14 +139,3 @@ def coefficients(rows: list[list[float]], targets: list[float]) -> list[float]:
     """Standardised coefficients, for explaining a call after the fact."""
     fit = _fit_ridge(np.asarray(rows, dtype=float), np.asarray(targets, dtype=float))
     return [float(w) for w in fit.weights]
-
-
-def prob_greater_than(threshold_c: float, mu_c: float, sigma_c: float) -> float:
-    """P(change > threshold) under the Gaussian predictive distribution.
-
-    math.erfc rather than scipy.stats.norm.sf — it keeps scipy out of the
-    dependency set for one function, and is exact to double precision.
-    """
-    if sigma_c <= 0:
-        return 1.0 if mu_c > threshold_c else 0.0
-    return 0.5 * math.erfc((threshold_c - mu_c) / (sigma_c * math.sqrt(2.0)))

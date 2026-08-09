@@ -23,7 +23,15 @@ import math
 from datetime import date as date_cls
 from datetime import datetime, timezone
 
-from thresholds import PROB_COLUMNS, THRESHOLDS_C, HEADLINE_THRESHOLD_C, threshold_key
+from thresholds import (
+    DISPLAY_STEP,
+    HEADLINE_THRESHOLD_C,
+    PROB_COLUMNS,
+    THRESHOLDS_C,
+    price_ladder,
+    snap,
+    threshold_key,
+)
 
 # z for two-sided intervals under the Gaussian predictive distribution.
 Z_80 = 1.2815515655446004
@@ -235,22 +243,37 @@ def render_site(scored, prices, forecasts, pending, by_mode, sizes,
         lo80, hi80 = centre - Z_80 * sigma / 100.0, centre + Z_80 * sigma / 100.0
         lo50, hi50 = centre - Z_50 * sigma / 100.0, centre + Z_50 * sigma / 100.0
 
+        # Interval ends snap OUTWARD onto the display grid. Rounding inward
+        # would advertise a range narrower than the one actually claimed —
+        # overconfidence by presentation, which is the failure this project
+        # works hardest to avoid. Hence "at least 80%".
+        lo80_s, hi80_s = snap(lo80, mode="down"), snap(hi80, mode="up")
+        lo50_s, hi50_s = snap(lo50, mode="down"), snap(hi50, mode="up")
+
         p.append(f'<h2>Where {E(nxt["target_date"])} lands</h2>')
-        p.append(f'<p class="range">${lo80:.4f} – ${hi80:.4f}</p>')
+        p.append(f'<p class="range">${lo80_s:.3f} – ${hi80_s:.3f}</p>')
         p.append(
-            f'<p class="mid">80% confidence. Middle estimate <strong>${centre:.4f}</strong> '
-            f'({mu:+.2f}¢ from ${level:.4f}). Even odds it lands between '
-            f'${lo50:.4f} and ${hi50:.4f}.</p>'
+            f'<p class="mid">At least 80% confidence. Middle estimate '
+            f'<strong>${snap(centre):.3f}</strong> ({mu:+.2f}¢ from '
+            f'${level:.4f}). Even odds it lands between ${lo50_s:.3f} and '
+            f'${hi50_s:.3f}.</p>'
         )
+
+        today_rung = snap(level)
         p.append('<div class="scroll"><table><thead><tr>'
                  '<th>Chance the price is above</th><th class="n">Probability</th>'
                  '</tr></thead><tbody>')
-        for c, col in zip(THRESHOLDS_C, PROB_COLUMNS):
-            prob = float(nxt[col]) * 100.0
-            mark = " <strong>(coin-flip line)</strong>" if c == HEADLINE_THRESHOLD_C else ""
-            p.append(f'<tr><td>${level + c / 100.0:.4f}{mark}</td>'
-                     f'<td class="n">{prob:.1f}%</td></tr>')
+        for price, prob in price_ladder(level, mu, sigma):
+            mark = " <strong>(today)</strong>" if abs(price - today_rung) < 1e-9 else ""
+            p.append(f'<tr><td>${price:.3f}{mark}</td>'
+                     f'<td class="n">{prob * 100:.1f}%</td></tr>')
         p.append("</tbody></table></div>")
+        p.append(
+            f'<p class="note">Prices are shown in ${DISPLAY_STEP:.3f} steps for '
+            "readability. The probabilities are computed from the forecast's "
+            "own centre and spread, not rounded off a stored table, so every "
+            "rung is exact for the price beside it.</p>"
+        )
         if nxt.get("mode") == "prior":
             p.append(
                 '<p class="note">This came from the bootstrap prior, not the '

@@ -104,15 +104,20 @@ class NextDayRange(unittest.TestCase):
         row.update({c: "0.5000" for c in dashboard.PROB_COLUMNS})
         return row
 
-    def test_interval_matches_mu_and_sigma(self):
+    def test_interval_is_snapped_outward_onto_the_display_grid(self):
+        """Exact interval is 3.99510 - 4.02070 around a centre of 4.00791.
+        Displayed ends must sit on the half-cent grid and must widen, never
+        narrow - a narrower stated range would claim more confidence than the
+        forecast supports."""
         page = dashboard.render_site(
             [], {}, [], [self.row()], {"model": [], "prior": []}, {},
             None, "- held", None, 0,
         )
-        # 4.0121 - 0.004195 = 4.007905 centre; +/- 1.28155 * 0.01
-        self.assertIn("$3.9951", page)   # low
-        self.assertIn("$4.0207", page)   # high
-        self.assertIn("$4.0079", page)   # centre
+        self.assertIn("$3.995 – $4.025", page)
+        self.assertIn("At least 80% confidence", page)
+        self.assertIn("$4.010", page)          # centre, snapped to nearest
+        self.assertNotIn("$3.9951", page)      # no 4dp noise survives
+        self.assertNotIn("$4.0207", page)
 
     def test_flags_that_a_prior_range_is_a_guess(self):
         page = dashboard.render_site(
@@ -128,13 +133,18 @@ class NextDayRange(unittest.TestCase):
         )
         self.assertIn("No forecast is currently awaiting an outcome", page)
 
-    def test_absolute_prices_match_the_stored_thresholds(self):
+    def test_ladder_brackets_todays_level(self):
+        """The ladder has to span the current price, or the reader cannot see
+        which way the forecast leans."""
+        import thresholds as th
         page = dashboard.render_site(
             [], {}, [], [self.row()], {"model": [], "prior": []}, {},
             None, "- held", None, 0,
         )
-        for offset in (-2, -1, 0, 1, 2):
-            self.assertIn(f"${4.0121 + offset / 100.0:.4f}", page)
+        rungs = [p for p, _ in th.price_ladder(4.0121, -0.4195, 1.0)]
+        self.assertLess(min(rungs), 4.0121)
+        self.assertGreater(max(rungs), 4.0121)
+        self.assertIn("(today)", page)
 
 
 class Chart(unittest.TestCase):
@@ -154,6 +164,84 @@ class Chart(unittest.TestCase):
         svg = dashboard._sparkline(prices, None)
         self.assertIn("<svg", svg)
         self.assertNotIn("nan", svg.lower())
+
+
+class HalfCentDisplay(unittest.TestCase):
+    """Absolute prices are shown on a readable grid; stored ones are untouched."""
+
+    def test_ladder_rungs_are_all_multiples_of_the_step(self):
+        import thresholds as th
+        for price, _ in th.price_ladder(4.0121, -0.4195, 1.0):
+            self.assertAlmostEqual(
+                price / th.DISPLAY_STEP, round(price / th.DISPLAY_STEP), places=9,
+                msg=f"${price} is not on the ${th.DISPLAY_STEP} grid",
+            )
+
+    def test_ladder_probabilities_are_exact_for_their_price(self):
+        """Rounding the price must not mean rounding the probability off some
+        neighbouring stored threshold — each rung is recomputed."""
+        import thresholds as th
+        level, mu, sigma = 4.0121, -0.4195, 1.0
+        for price, prob in th.price_ladder(level, mu, sigma):
+            self.assertAlmostEqual(
+                prob, th.prob_above_price(price, level, mu, sigma), places=12
+            )
+
+    def test_ladder_descends_monotonically(self):
+        import thresholds as th
+        probs = [p for _, p in th.price_ladder(4.0121, -0.4195, 1.0)]
+        self.assertEqual(probs, sorted(probs, reverse=True))
+        self.assertTrue(all(0.0 <= p <= 1.0 for p in probs))
+
+    def test_ladder_widens_with_sigma(self):
+        import thresholds as th
+        tight = th.price_ladder(4.0000, 0.0, 0.5)
+        wide = th.price_ladder(4.0000, 0.0, 2.0)
+        self.assertGreater(len(wide), len(tight))
+
+    def test_snap_rounds_intervals_outward_never_inward(self):
+        import thresholds as th
+        self.assertLessEqual(th.snap(3.9951, mode="down"), 3.9951)
+        self.assertGreaterEqual(th.snap(4.0207, mode="up"), 4.0207)
+        self.assertEqual(th.snap(3.9951, mode="down"), 3.995)
+        self.assertEqual(th.snap(4.0207, mode="up"), 4.025)
+
+    def test_snap_survives_binary_representation_of_0_005(self):
+        import thresholds as th
+        for raw in (3.995, 4.010, 4.025, 3.9950000001):
+            snapped = th.snap(raw)
+            self.assertAlmostEqual(snapped * 200, round(snapped * 200), places=9)
+
+    def test_page_shows_only_grid_prices_in_the_ladder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = build(tmp, 12)
+        body = page.split("Chance the price is above")[1].split("</table>")[0]
+        for price in re.findall(r"\$(\d+\.\d+)", body):
+            self.assertEqual(len(price.split(".")[1]), 3, f"${price} not 3dp")
+            self.assertAlmostEqual(
+                float(price) * 200, round(float(price) * 200), places=6,
+                msg=f"${price} is not a half-cent multiple",
+            )
+
+    def test_stored_thresholds_are_unchanged_by_any_of_this(self):
+        """§6.4: what goes on disk stays relative to the level. The display
+        grid must never leak into the record."""
+        import thresholds as th
+        self.assertEqual(th.THRESHOLDS_C, [-2.0, -1.0, 0.0, 1.0, 2.0])
+        self.assertEqual(
+            th.PROB_COLUMNS,
+            ["p_gt_m2c", "p_gt_m1c", "p_gt_0c", "p_gt_p1c", "p_gt_p2c"],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            obs, out = Path(tmp) / "obs.csv", Path(tmp) / "fc.csv"
+            write_observations(obs, random_walk(6))
+            with contextlib.redirect_stdout(io.StringIO()):
+                fc.main(["--observations", str(obs), "--out", str(out)])
+            with out.open(newline="", encoding="utf-8") as handle:
+                row = list(csv.DictReader(handle))[0]
+            level = float(row["level_at_forecast"])
+            # The stored level is the raw observation, not snapped to the grid.
+            self.assertEqual(f"{level:.4f}", row["level_at_forecast"])
 
 
 if __name__ == "__main__":
