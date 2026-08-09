@@ -42,7 +42,7 @@ a{color:var(--accent)}
 </style>
 <div class="wrap">
 <h1>AAA national average — daily forecast</h1>
-<p class="sub">Updated 2026-08-09T17:24:38+00:00 · <a href="https://github.com/parallax-parking/daily-gas-prices">source</a> · <a href="https://github.com/parallax-parking/daily-gas-prices/blob/main/CONTEXT.md">full report</a></p>
+<p class="sub">Updated 2026-08-09T17:39:49+00:00 · <a href="https://github.com/parallax-parking/daily-gas-prices">source</a> · <a href="https://github.com/parallax-parking/daily-gas-prices/blob/main/CONTEXT.md">full report</a></p>
 <div class="card">
 <h2>How much to trust this</h2>
 <p class="verdict bootstrap">Not the real model yet</p>
@@ -51,7 +51,7 @@ a{color:var(--accent)}
 <div class="fact"><div class="k">Scored</div><div class="v">10</div></div>
 <div class="fact"><div class="k">Effective n</div><div class="v">3.0</div></div>
 <div class="fact"><div class="k">Fitted / bootstrap</div><div class="v">0 / 10</div></div>
-<div class="fact"><div class="k">Training rows</div><div class="v">3 / 30</div></div>
+<div class="fact"><div class="k">Training rows</div><div class="v">9 / 30</div></div>
 </div>
 <p class="note">Spread check: **held** at n_eff = 3.0 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.</p>
 <p class="note"><strong>Effective n</strong> is not the number of days. Consecutive forecasts are nearly the same bet, so it counts independent evidence, which is always less.</p>
@@ -76,10 +76,10 @@ a{color:var(--accent)}
 <p class="note">This came from the bootstrap prior, not the fitted model. It carries a third of the recent average change forward and assumes a fixed 1¢ spread, so it lags any turn and its range is a guess rather than a measurement.</p>
 </div>
 <div class="card"><h2>Recent prices</h2>
-<svg viewBox="0 0 720 200" role="img" aria-label="AAA national average, last 11 days"><polyline class="line" points="40.0,44.2 100.0,35.1 160.0,40.8 220.0,46.4 280.0,47.6 340.0,54.4 400.0,64.5 460.0,83.5 520.0,107.5 580.0,129.9 640.0,141.6"/><circle class="dot" cx="40.0" cy="44.2" r="2.5"/><circle class="dot" cx="100.0" cy="35.1" r="2.5"/><circle class="dot" cx="160.0" cy="40.8" r="2.5"/><circle class="dot" cx="220.0" cy="46.4" r="2.5"/><circle class="dot" cx="280.0" cy="47.6" r="2.5"/><circle class="dot" cx="340.0" cy="54.4" r="2.5"/><circle class="dot" cx="400.0" cy="64.5" r="2.5"/><circle class="dot" cx="460.0" cy="83.5" r="2.5"/><circle class="dot" cx="520.0" cy="107.5" r="2.5"/><circle class="dot" cx="580.0" cy="129.9" r="2.5"/><circle class="dot" cx="640.0" cy="141.6" r="2.5"/><line class="band" x1="700.0" y1="160.9" x2="700.0" y2="131.8"/><circle class="fc" cx="700.0" cy="146.4" r="4"/><text class="lbl" x="694.0" y="123.8" text-anchor="end">80% range</text><text class="axis" x="40" y="194">2026-07-30</text><text class="axis" x="700" y="194" text-anchor="end">2026-08-09</text></svg>
+<svg viewBox="0 0 720 200" role="img" aria-label="AAA national average, last 17 days"><polyline class="line" points="40.0,41.6 78.8,35.1 117.6,36.2 156.5,36.2 195.3,48.1 234.1,57.1 272.9,49.2 311.8,40.5 350.6,46.0 389.4,51.4 428.2,52.5 467.1,59.0 505.9,68.6 544.7,86.9 583.5,109.8 622.4,131.3 661.2,142.4"/><circle class="dot" cx="40.0" cy="41.6" r="2.5"/><circle class="dot" cx="78.8" cy="35.1" r="2.5"/><circle class="dot" cx="117.6" cy="36.2" r="2.5"/><circle class="dot" cx="156.5" cy="36.2" r="2.5"/><circle class="dot" cx="195.3" cy="48.1" r="2.5"/><circle class="dot" cx="234.1" cy="57.1" r="2.5"/><circle class="dot" cx="272.9" cy="49.2" r="2.5"/><circle class="dot" cx="311.8" cy="40.5" r="2.5"/><circle class="dot" cx="350.6" cy="46.0" r="2.5"/><circle class="dot" cx="389.4" cy="51.4" r="2.5"/><circle class="dot" cx="428.2" cy="52.5" r="2.5"/><circle class="dot" cx="467.1" cy="59.0" r="2.5"/><circle class="dot" cx="505.9" cy="68.6" r="2.5"/><circle class="dot" cx="544.7" cy="86.9" r="2.5"/><circle class="dot" cx="583.5" cy="109.8" r="2.5"/><circle class="dot" cx="622.4" cy="131.3" r="2.5"/><circle class="dot" cx="661.2" cy="142.4" r="2.5"/><line class="band" x1="700.0" y1="160.9" x2="700.0" y2="133.1"/><circle class="fc" cx="700.0" cy="147.0" r="4"/><text class="lbl" x="694.0" y="125.1" text-anchor="end">80% range</text><text class="axis" x="40" y="194">2026-07-24</text><text class="axis" x="700" y="194" text-anchor="end">2026-08-09</text></svg>
 <p class="note">Blue is what AAA published. The orange bar is the 80% range for the next day.</p></div>
 <div class="card"><h2>What the model is keying on</h2>
-<p class="why">Not fitted yet — needs 30 complete training rows and has 3.</p>
+<p class="why">Not fitted yet — needs 30 complete training rows and has 9.</p>
 </div>
 <p class="note">The forecast is not the product; the calibration record is. This page is generated on every daily run from the same data as the full report, and is never hand-edited.</p>
 </div>
