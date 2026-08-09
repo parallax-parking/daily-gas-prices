@@ -19,14 +19,15 @@ regenerated on every run.
 | `model.py` | Ridge fit/predict, plus the bootstrap prior used before 30 training rows exist. |
 | `thresholds.py` | The threshold grid, shared by writer and scorer. |
 | `forecast.py` | CLI. Appends exactly one immutable forecast row. |
-| `score.py` | CLI. Joins forecasts to outcomes, scores them, regenerates `CONTEXT.md`. |
+| `score.py` | CLI. Joins forecasts to outcomes, scores them, regenerates `CONTEXT.md` and the dashboard. |
+| `dashboard.py` | Renders the GitHub Pages page. Named `dashboard` and not `site` because `import site` resolves to Python's stdlib module. |
 
 ## Running it
 
 ```sh
 pip install -r forecast/requirements.txt
 
-python forecast/score.py    --out CONTEXT.md            # score first
+python forecast/score.py    --out CONTEXT.md --site docs/index.html   # score first
 python forecast/forecast.py --out data/forecasts.csv    # then forecast
 ```
 

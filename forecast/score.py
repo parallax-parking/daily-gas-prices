@@ -632,6 +632,42 @@ def render(
     return "\n".join(lines) + "\n"
 
 
+def build_site(scored, prices, forecasts, pending) -> str:
+    """Assemble the dashboard from the same joined record CONTEXT.md uses.
+
+    Deliberately called from here rather than from a separate entry point: two
+    programs reading the record independently would eventually disagree, and a
+    dashboard that quietly contradicts the report is worse than no dashboard.
+    """
+    # Named `dashboard`, not `site`: `import site` resolves to Python's own
+    # stdlib module, which silently shadows a local site.py.
+    import dashboard  # noqa: PLC0415 — keeps score.py importable alone
+
+    by_mode = {
+        "model": [r for r in scored if r["mode"] == "model"],
+        "prior": [r for r in scored if r["mode"] == "prior"],
+    }
+    sizes = {m: sample_size(rows) for m, rows in by_mode.items() if rows}
+
+    # The trust panel judges the fitted model when there is one, and falls back
+    # to the bootstrap otherwise — never pooling them, per §6.5.
+    lead = "model" if by_mode["model"] else "prior"
+    lead_rows = by_mode.get(lead, [])
+
+    headline = brier(by_mode["model"], HEADLINE_THRESHOLD_C) if by_mode["model"] else None
+    pit = pit_summary(lead_rows) if lead_rows else None
+    n_eff = sizes.get(lead, {}).get("binding", 0.0)
+    spread_line = (
+        spread_verdict(pit["ratio"], n_eff) if pit else "- Nothing scored yet."
+    )
+    coeff, n_train = current_coefficients(prices)
+
+    return dashboard.render_site(
+        scored, prices, forecasts, pending, by_mode, sizes,
+        headline, spread_line, coeff, n_train,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -639,6 +675,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--forecasts", type=Path, default=Path("data/forecasts.csv"))
     parser.add_argument("--out", type=Path, default=Path("CONTEXT.md"))
+    parser.add_argument(
+        "--site",
+        type=Path,
+        default=None,
+        help="also write the GitHub Pages dashboard here (e.g. docs/index.html)",
+    )
     parser.add_argument("--grade", default="regular")
     args = parser.parse_args(argv)
 
@@ -653,9 +695,14 @@ def main(argv: list[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(render(scored, prices, forecasts, pending), encoding="utf-8")
 
+    if args.site:
+        args.site.parent.mkdir(parents=True, exist_ok=True)
+        args.site.write_text(build_site(scored, prices, forecasts, pending), "utf-8")
+
     print(
         f"scored {len(scored)} of {len(forecasts)} forecast(s); "
         f"{len(pending)} awaiting outcome -> {args.out}"
+        + (f", {args.site}" if args.site else "")
     )
     return 0
 

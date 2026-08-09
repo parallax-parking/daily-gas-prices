@@ -73,21 +73,24 @@ jobs:
       # invariant 4. These three steps stay in one job so they share a working
       # tree and land in a single commit, keeping commit order faithful to the
       # order in which the forecast and its outcome actually existed.
+      # Writes CONTEXT.md and the GitHub Pages dashboard in one pass, so the
+      # page can never disagree with the report — same process, same joined
+      # record.
       - name: Score yesterday's forecast
-        run: python forecast/score.py --out CONTEXT.md
+        run: python forecast/score.py --out CONTEXT.md --site docs/index.html
 
       - name: Forecast tomorrow
         run: python forecast/forecast.py --out data/forecasts.csv
 
       - name: Commit the new row
         run: |
-          if [ -z "$(git status --porcelain data CONTEXT.md)" ]; then
+          if [ -z "$(git status --porcelain data CONTEXT.md docs)" ]; then
             echo "No change — already have today's reading."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data CONTEXT.md
+          git add data CONTEXT.md docs
           git commit -m "data: AAA national average for $(date -u +%F)"
           for attempt in 1 2 3 4; do
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \

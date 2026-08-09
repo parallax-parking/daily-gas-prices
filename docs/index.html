@@ -1,0 +1,79 @@
+<style>
+:root{--bg:#fbfbfa;--fg:#1a1a19;--dim:#6b6b68;--line:#e0e0dc;--card:#fff;
+--ok:#2f7d52;--warn:#a8620a;--bad:#a33a2e;--accent:#3d5a80}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eceae5;--dim:#9a9792;
+--line:#33312d;--card:#1e1c1a;--ok:#6cc08a;--warn:#e0a057;--bad:#e0796a;--accent:#8fb3d9}}
+*{box-sizing:border-box}
+body{margin:0;padding:2rem 1.25rem 4rem;background:var(--bg);color:var(--fg);
+font:16px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:820px;margin:0 auto}
+h1{font-size:1.5rem;margin:0 0 .25rem}
+.sub{color:var(--dim);font-size:.9rem;margin:0 0 2rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+padding:1.25rem 1.4rem;margin:0 0 1.25rem}
+.card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;
+color:var(--dim);margin:0 0 .9rem;font-weight:600}
+.verdict{font-size:1.5rem;font-weight:650;margin:0 0 .5rem;line-height:1.25}
+.verdict.none,.verdict.insufficient,.verdict.bootstrap{color:var(--warn)}
+.verdict.directional{color:var(--accent)}
+.verdict.good{color:var(--ok)}
+.verdict.poor{color:var(--bad)}
+.why{color:var(--dim);margin:0 0 1rem;font-size:.94rem}
+.range{font-size:2rem;font-weight:650;letter-spacing:-.02em;margin:.1rem 0 .3rem}
+.mid{font-size:1rem;color:var(--dim);margin:0 0 1rem}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:.42rem .5rem;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600;font-size:.8rem}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.9rem}
+.fact .k{font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.fact .v{font-size:1.15rem;font-weight:600;font-variant-numeric:tabular-nums}
+svg{width:100%;height:auto;display:block;overflow:visible}
+.line{fill:none;stroke:var(--accent);stroke-width:2}
+.dot{fill:var(--accent)}
+.band{stroke:var(--warn);stroke-width:8;stroke-linecap:round;opacity:.32}
+.fc{fill:var(--warn)}
+.lbl,.axis{font-size:11px;fill:var(--dim)}
+.note{font-size:.86rem;color:var(--dim);border-left:3px solid var(--line);
+padding-left:.9rem;margin:1rem 0 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+a{color:var(--accent)}
+.scroll{overflow-x:auto}
+</style>
+<div class="wrap">
+<h1>AAA national average — daily forecast</h1>
+<p class="sub">Updated 2026-08-09T17:13:05+00:00 · <a href="https://github.com/parallax-parking/daily-gas-prices">source</a> · <a href="https://github.com/parallax-parking/daily-gas-prices/blob/main/CONTEXT.md">full report</a></p>
+<div class="card">
+<h2>How much to trust this</h2>
+<p class="verdict bootstrap">Not the real model yet</p>
+<p class="why">Every forecast so far comes from the bootstrap prior — a rule of thumb that carries a third of the recent average change forward. It cannot anticipate a turn, and its scores say nothing about the fitted model that replaces it.</p>
+<div class="facts">
+<div class="fact"><div class="k">Scored</div><div class="v">10</div></div>
+<div class="fact"><div class="k">Effective n</div><div class="v">3.0</div></div>
+<div class="fact"><div class="k">Fitted / bootstrap</div><div class="v">0 / 10</div></div>
+<div class="fact"><div class="k">Training rows</div><div class="v">3 / 30</div></div>
+</div>
+<p class="note">Spread check: **held** at n_eff = 3.0 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.</p>
+<p class="note"><strong>Effective n</strong> is not the number of days. Consecutive forecasts are nearly the same bet, so it counts independent evidence, which is always less.</p>
+</div>
+<div class="card">
+<h2>Where 2026-08-10 lands</h2>
+<p class="range">$3.9951 – $4.0207</p>
+<p class="mid">80% confidence. Middle estimate <strong>$4.0079</strong> (-0.42¢ from $4.0121). Even odds it lands between $4.0012 and $4.0146.</p>
+<div class="scroll"><table><thead><tr><th>Chance the price is above</th><th class="n">Probability</th></tr></thead><tbody>
+<tr><td>$3.9921</td><td class="n">94.3%</td></tr>
+<tr><td>$4.0021</td><td class="n">71.9%</td></tr>
+<tr><td>$4.0121 <strong>(coin-flip line)</strong></td><td class="n">33.7%</td></tr>
+<tr><td>$4.0221</td><td class="n">7.8%</td></tr>
+<tr><td>$4.0321</td><td class="n">0.8%</td></tr>
+</tbody></table></div>
+<p class="note">This came from the bootstrap prior, not the fitted model. It carries a third of the recent average change forward and assumes a fixed 1¢ spread, so it lags any turn and its range is a guess rather than a measurement.</p>
+</div>
+<div class="card"><h2>Recent prices</h2>
+<svg viewBox="0 0 720 200" role="img" aria-label="AAA national average, last 11 days"><polyline class="line" points="40.0,44.2 100.0,35.1 160.0,40.8 220.0,46.4 280.0,47.6 340.0,54.4 400.0,64.5 460.0,83.5 520.0,107.5 580.0,129.9 640.0,141.6"/><circle class="dot" cx="40.0" cy="44.2" r="2.5"/><circle class="dot" cx="100.0" cy="35.1" r="2.5"/><circle class="dot" cx="160.0" cy="40.8" r="2.5"/><circle class="dot" cx="220.0" cy="46.4" r="2.5"/><circle class="dot" cx="280.0" cy="47.6" r="2.5"/><circle class="dot" cx="340.0" cy="54.4" r="2.5"/><circle class="dot" cx="400.0" cy="64.5" r="2.5"/><circle class="dot" cx="460.0" cy="83.5" r="2.5"/><circle class="dot" cx="520.0" cy="107.5" r="2.5"/><circle class="dot" cx="580.0" cy="129.9" r="2.5"/><circle class="dot" cx="640.0" cy="141.6" r="2.5"/><line class="band" x1="700.0" y1="160.9" x2="700.0" y2="131.8"/><circle class="fc" cx="700.0" cy="146.4" r="4"/><text class="lbl" x="694.0" y="123.8" text-anchor="end">80% range</text><text class="axis" x="40" y="194">2026-07-30</text><text class="axis" x="700" y="194" text-anchor="end">2026-08-09</text></svg>
+<p class="note">Blue is what AAA published. The orange bar is the 80% range for the next day.</p></div>
+<div class="card"><h2>What the model is keying on</h2>
+<p class="why">Not fitted yet — needs 30 complete training rows and has 3.</p>
+</div>
+<p class="note">The forecast is not the product; the calibration record is. This page is generated on every daily run from the same data as the full report, and is never hand-edited.</p>
+</div>
