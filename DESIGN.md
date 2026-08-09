@@ -259,6 +259,16 @@ every day is a structurally different bet — some trivially resolved before
 they're made. Pooling those into a reliability curve is meaningless. Relative
 thresholds keep each day comparable.
 
+Displayed prices are a separate matter. Absolute prices are rendered on a
+half-cent grid (`DISPLAY_STEP = 0.005`) because "is it above $3.995?" is a
+question a person can hold in their head and "is it above $3.9921?" is not.
+That grid is cosmetic and lives only in `thresholds.price_ladder`: each rung's
+probability is recomputed from `mu` and `sigma` rather than rounded off a
+neighbouring stored value, so it stays exact for the price beside it. Interval
+endpoints snap **outward**, so a displayed range always contains at least the
+probability it claims — rounding inward would be overconfidence introduced by
+presentation. Nothing on disk changes.
+
 **The `> 0c` threshold is the only genuinely hard one.** In smoke testing, `±2c`
 scored a Brier of 0.0002 against a 100% base rate — resolved before it was
 asked. Report all five, but judge the system on `> 0c`, secondarily `±1c`. Do

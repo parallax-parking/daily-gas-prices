@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import features as feat  # noqa: E402
 import model as mdl  # noqa: E402
-from thresholds import PROB_COLUMNS, THRESHOLDS_C  # noqa: E402
+from thresholds import PROB_COLUMNS, THRESHOLDS_C, snap  # noqa: E402
 
 FIELDNAMES = [
     "target_date",
@@ -172,6 +172,17 @@ def main(argv: list[str] | None = None) -> int:
             f"    P(change > {threshold:+.0f}c) = {float(row[column]) * 100:5.1f}%"
             f"   i.e. P(price > ${level + threshold / 100.0:.4f})"
         )
+
+    # The lines above mirror what was stored, at the exact relative thresholds
+    # §6.4 requires. This one is for a human reading the log: the same
+    # distribution as a price range on the half-cent grid, snapped outward so
+    # the stated range holds at least the stated probability.
+    mu, sigma = float(row["mu_cents"]), float(row["sigma_cents"])
+    centre = level + mu / 100.0
+    print(
+        f"    -> at least 80% between ${snap(centre - 1.2816 * sigma / 100, mode='down'):.3f}"
+        f" and ${snap(centre + 1.2816 * sigma / 100, mode='up'):.3f}"
+    )
     return 0
 
 
