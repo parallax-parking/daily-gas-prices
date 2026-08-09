@@ -2,7 +2,7 @@
 
 **Status: created and enabled** on 2026-07-31 as trigger
 `trig_01T5fCpZdn3im3J1Km178LXd`, named "Weekly calibration review —
-nantucket-late-august". First firing 2026-08-03 14:23 UTC. The prompt below is
+nantucket-late-august" (name predates the repo move). First firing 2026-08-03 14:23 UTC. The prompt below is
 the text it runs, verbatim; edit the Routine, not just this file, if you change
 it.
 
@@ -27,7 +27,7 @@ low, but the daily job at `:17` shares the rationale and consistency is free.
 
 ```
 Weekly review of the gas-price forecast calibration loop in the repo
-`parallax-parking/nantucket-late-august`. You are running autonomously and
+`parallax-parking/daily-gas-prices`. You are running autonomously and
 cannot ask questions, so everything you need is below. Default to doing
 nothing — silence is the correct output most weeks.
 

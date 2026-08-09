@@ -39,7 +39,7 @@ Two things to know about Actions cron:
 - **cron on an always-on machine** (a home server or VPS — a laptop that sleeps
   will miss days):
   ```
-  0 9 * * * cd /path/to/nantucket-late-august && /usr/bin/python3 scraper/aaa_gas_prices.py --out data/aaa_national_average.csv >> /tmp/aaa.log 2>&1
+  0 9 * * * cd /path/to/daily-gas-prices && /usr/bin/python3 scraper/aaa_gas_prices.py --out data/aaa_national_average.csv >> /tmp/aaa.log 2>&1
   ```
   On macOS use `launchd` instead; unlike cron, it runs jobs it missed while the
   machine was asleep.

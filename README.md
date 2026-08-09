@@ -1,13 +1,49 @@
-# Nantucket, Late August — A Proposal
+# daily-gas-prices
 
-An interactive trip proposal for a few days on Nantucket: pick your hotel, bikes, dining style, and whale watch, and a running ledger keeps the estimated total.
+A daily probabilistic forecast of the AAA national average gas price, and an
+auditable record of how well calibrated it is.
 
-**🌊 View the site:** https://parallax-parking.github.io/nantucket-late-august/
+**The forecast is not the product. The calibration record is.** Anyone can guess
+gas prices. What's useful is knowing how much to trust the guesses — so that
+when this says "70%", you know from accumulated evidence that those turn out
+true about 70% of the time.
 
-Built as a single self-contained `index.html`, hosted with GitHub Pages.
+## Where to look
 
-## Also in here
+| | |
+|---|---|
+| [`CONTEXT.md`](CONTEXT.md) | Current state, regenerated every morning. Start here. |
+| [`DESIGN.md`](DESIGN.md) | Why everything is the way it is, including what was tried and rejected. |
+| [`data/aaa_national_average.csv`](data/aaa_national_average.csv) | One observation per day. |
+| [`data/forecasts.csv`](data/forecasts.csv) | One forecast per day, append-only, never edited. |
+| [`scraper/`](scraper/README.md) | Collection. |
+| [`forecast/`](forecast/README.md) | Forecasting and scoring. |
 
-`scraper/` collects the AAA national average gas price once a day into
-`data/aaa_national_average.csv`, on a GitHub Actions schedule. See
-[`scraper/README.md`](scraper/README.md).
+## How it runs
+
+A GitHub Actions job fires daily at 13:17 UTC and, in one job so the three
+steps share a working tree and land in a single commit:
+
+1. scrapes today's AAA national average
+2. scores yesterday's forecast against what actually happened
+3. writes a new forecast for tomorrow
+
+A weekly Claude Code Routine reads the record each Monday and opens an issue
+only if something is wrong — see [`forecast/REVIEW_ROUTINE.md`](forecast/REVIEW_ROUTINE.md).
+
+## Provenance
+
+This project began in
+[`parallax-parking/nantucket-late-august`](https://github.com/parallax-parking/nantucket-late-august)
+and moved here on 2026-08-06 with **full commit history preserved**.
+
+That preservation is not housekeeping. The record's evidentiary value rests on
+forecasts having been committed *before* their outcomes existed, and git commit
+timestamps are the only proof of that. Every row of `data/forecasts.csv` also
+carries the `git_sha` of the commit that produced it; those SHAs resolve in this
+repository because the history was moved rather than rewritten.
+
+Commits before 2026-08-06 therefore include some unrelated to gas prices — the
+original repository hosted a trip-planning page, whose files were removed in the
+migration commit but remain in the history. That noise is the price of keeping
+the audit trail intact, and it was the right trade.
