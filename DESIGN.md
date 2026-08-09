@@ -1,7 +1,8 @@
 # Design: daily gas price forecast calibration loop
 
 **Status:** implemented through M4; M5 blocked on data volume
-**Repo:** `parallax-parking/nantucket-late-august`
+**Repo:** `parallax-parking/daily-gas-prices`
+(migrated from `parallax-parking/nantucket-late-august` on 2026-08-06, history preserved)
 **Audience:** a Claude Code session implementing or extending this. You will not
 have the conversation this came from. Everything you need is here, including the
 reasons behind choices that look arbitrary — several of them are load-bearing
