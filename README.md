@@ -12,7 +12,8 @@ true about 70% of the time.
 
 | | |
 |---|---|
-| [`CONTEXT.md`](CONTEXT.md) | Current state, regenerated every morning. Start here. |
+| **[Dashboard](https://parallax-parking.github.io/daily-gas-prices/)** | How trustworthy the model is right now, and tomorrow's price range. Start here. |
+| [`CONTEXT.md`](CONTEXT.md) | The full report behind the dashboard, regenerated every morning. |
 | [`DESIGN.md`](DESIGN.md) | Why everything is the way it is, including what was tried and rejected. |
 | [`data/aaa_national_average.csv`](data/aaa_national_average.csv) | One observation per day. |
 | [`data/forecasts.csv`](data/forecasts.csv) | One forecast per day, append-only, never edited. |
@@ -25,8 +26,13 @@ A GitHub Actions job fires daily at 13:17 UTC and, in one job so the three
 steps share a working tree and land in a single commit:
 
 1. scrapes today's AAA national average
-2. scores yesterday's forecast against what actually happened
+2. scores yesterday's forecast against what actually happened, regenerating
+   both `CONTEXT.md` and the dashboard from the same joined record
 3. writes a new forecast for tomorrow
+
+The dashboard is plain static HTML in `docs/`, served by GitHub Pages from
+`main`. No scripts, no external requests, no second workflow — it updates
+because the daily commit includes it.
 
 A weekly Claude Code Routine reads the record each Monday and opens an issue
 only if something is wrong — see [`forecast/REVIEW_ROUTINE.md`](forecast/REVIEW_ROUTINE.md).
