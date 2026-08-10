@@ -187,7 +187,11 @@ class GapRepair(unittest.TestCase):
             self.assertEqual(recovered["regular"], "4.0810")
             # Only `regular` is recoverable this way, and the row says so.
             self.assertEqual(recovered["premium"], "")
-            self.assertEqual(recovered["source_url"], BACKFILL_SOURCE)
+            # The suffix records WHICH lag produced it; they are not equally
+            # faithful, so the row has to say which one it came from.
+            self.assertEqual(
+                recovered["source_url"], f"{BACKFILL_SOURCE}regular_yesterday"
+            )
 
     def test_backfill_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -227,3 +231,103 @@ class RevisionDetection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WeekAgoBackfill(unittest.TestCase):
+    """regular_week_ago is a parallel daily series 7 days behind, so it extends
+    the record earlier than collection began — not just gap repair."""
+
+    def series(self, path, start_price=4.10, days=5):
+        """Consecutive observations, each carrying a week_ago 7 days back."""
+        from datetime import date as d, timedelta as td
+        import aaa_gas_prices as s
+
+        base = d(2026, 8, 1)
+        for i in range(days):
+            day = base + td(days=i)
+            write_csv(path, Reading(
+                date=day.isoformat(),
+                prices={"regular": start_price + i * 0.001},
+                retrieved_at_utc=f"{day}T15:00:00+00:00",
+                lags={
+                    "yesterday": start_price + (i - 1) * 0.001 if i else None,
+                    "week_ago": 4.05 + i * 0.001,
+                },
+            ))
+
+    def test_extends_the_series_backward_by_a_week(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obs.csv"
+            self.series(path)
+            added = backfill(path)
+            rows = read_existing(path)
+            dates = [r["date"] for r in rows]
+
+            self.assertEqual(dates[0], "2026-07-25")   # 08-01 minus 7 days
+            self.assertIn("2026-07-29", dates)
+            self.assertEqual(len(dates), len(set(dates)), "duplicate dates")
+            self.assertEqual(dates, sorted(dates))
+            self.assertTrue(all(d in dates for d in added))
+
+    def test_marks_which_lag_produced_each_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obs.csv"
+            self.series(path)
+            backfill(path)
+            sources = {
+                r["date"]: r["source_url"] for r in read_existing(path)
+                if r["source_url"].startswith(BACKFILL_SOURCE)
+            }
+            self.assertTrue(sources, "nothing was reconstructed")
+            for date_str, source in sources.items():
+                self.assertIn(source.split(":")[1], ("regular_yesterday", "regular_week_ago"))
+
+    def test_refuses_a_lag_whose_offset_looks_wrong(self):
+        """A cent-scale disagreement means the day offset is wrong, and every
+        reconstructed row would be a real price under the wrong date."""
+        import aaa_gas_prices as s
+        rows = [
+            {"date": "2026-08-08", "regular": "4.0000",
+             "regular_week_ago": "", "source_url": s.SOURCE_URL},
+            {"date": "2026-08-15", "regular": "4.5000",
+             "regular_week_ago": "3.0000", "source_url": s.SOURCE_URL},
+        ]
+        worst, checked, refusal = s.validate_lag(rows, "regular_week_ago", 7)
+        self.assertEqual(checked, 1)
+        self.assertGreater(worst, s.BACKFILL_ABORT_DELTA)
+        self.assertIsNotNone(refusal)
+        self.assertIn("offset is probably wrong", refusal)
+
+    def test_tolerates_revision_sized_disagreement(self):
+        """Hundredths of a cent is AAA revising its own series, not a bug."""
+        import aaa_gas_prices as s
+        rows = [
+            {"date": "2026-08-08", "regular": "4.0000",
+             "regular_week_ago": "", "source_url": s.SOURCE_URL},
+            {"date": "2026-08-15", "regular": "4.0100",
+             "regular_week_ago": "4.0003", "source_url": s.SOURCE_URL},
+        ]
+        worst, checked, refusal = s.validate_lag(rows, "regular_week_ago", 7)
+        self.assertIsNone(refusal)
+        self.assertAlmostEqual(worst, 0.0003, places=6)
+
+    def test_validation_ignores_previously_backfilled_rows(self):
+        """Comparing reconstructed rows against the column that produced them
+        would be circular and always agree."""
+        import aaa_gas_prices as s
+        rows = [
+            {"date": "2026-07-25", "regular": "4.0500",
+             "regular_week_ago": "", "source_url": f"{s.BACKFILL_SOURCE}regular_week_ago"},
+            {"date": "2026-08-01", "regular": "4.1000",
+             "regular_week_ago": "4.0500", "source_url": s.SOURCE_URL},
+        ]
+        _, checked, _ = s.validate_lag(rows, "regular_week_ago", 7)
+        self.assertEqual(checked, 0, "backfilled rows must not be used as truth")
+
+    def test_backfill_is_idempotent_across_both_lags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obs.csv"
+            self.series(path)
+            first = backfill(path)
+            self.assertTrue(first)
+            self.assertEqual(backfill(path), [])

@@ -175,9 +175,34 @@ Three reasons this is worth the extra parsing:
 
 Migration is backward compatible: old rows keep empty values in the new columns.
 
-Rows written by `--backfill` carry `regular` only, and are marked in
-`source_url` with `backfill:next-day-yesterday` so they are never mistaken for
-direct observations.
+Because observations are consecutive, the lag columns are too: each is a
+parallel daily series running a fixed number of days behind. `--backfill`
+therefore does more than repair gaps — `regular_week_ago` extends the record a
+full week earlier than collection began. On 2026-08-09 that pulled the series
+start from 07-30 back to 07-24 and moved the fitted model's start from 09-04 to
+08-29.
+
+Rows written by `--backfill` carry `regular` only, and `source_url` records
+which lag produced them (`backfill:regular_week_ago`), because the lags are not
+equally faithful.
+
+**Measured 2026-08-09:** where a lag column overlaps a directly observed day the
+two should agree, and mostly do. `regular_yesterday` matched exactly on 9 of 10
+days. `regular_week_ago` differed on all 4 testable days, by +0.0001 to +0.0003,
+**always upward** — too consistent for noise and too small for a date error.
+The reading is that AAA revises its published series as late station data
+arrives: one day is too soon for much revision, a week is not. Reconstructed
+values are therefore AAA's *revised* figures rather than what it published at
+the time. At 0.03c against daily moves of 50-200c that is worth accepting, but
+it means the series mixes two bases and the reconstructed rows are marked so
+they can be excluded if that ever matters.
+
+`validate_lag` separates the two failure modes on magnitude: hundredths of a
+cent is revision and merely warns; a cent or more means the assumed day offset
+is wrong, every reconstructed row would be a real price filed under the wrong
+date, and that lag is refused outright. Only offsets with unambiguous semantics
+are eligible at all, which is why `month_ago` and `year_ago` are excluded — they
+could mean 30 days or the same day-of-month, and those differ.
 
 ### 5.2 `data/forecasts.csv` (append-only)
 

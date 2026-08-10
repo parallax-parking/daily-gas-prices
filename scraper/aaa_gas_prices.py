@@ -36,8 +36,34 @@ from bs4 import BeautifulSoup
 SOURCE_URL = "https://gasprices.aaa.com/"
 
 # Marks rows reconstructed by --backfill rather than fetched. Such a row has
-# `regular` only; every other price column is empty.
-BACKFILL_SOURCE = "backfill:next-day-yesterday"
+# `regular` only; every other price column is empty. The suffix records which
+# lag column it came from, because they are not equally trustworthy — see
+# BACKFILL_LAGS.
+BACKFILL_SOURCE = "backfill:"
+
+# Lag columns usable for reconstruction, as (column, days back), tried in this
+# order so the most faithful source wins when both could fill a date.
+#
+# Only offsets with unambiguous semantics are here. "Month ago" and "year ago"
+# could mean 30 days or the same day-of-month, and those differ; filing a real
+# price under the wrong date is worse than not having it at all.
+BACKFILL_LAGS = [("regular_yesterday", 1), ("regular_week_ago", 7)]
+
+# Where a lag column overlaps a day we observed directly, the two should agree.
+# They mostly do — but not exactly, and the size of the disagreement separates
+# two very different situations:
+#
+#   - Hundredths of a cent: AAA revising its own published series as late
+#     station data arrives. Measured 2026-08-09: `regular_yesterday` matched
+#     9 times in 10, while `regular_week_ago` differed on all 4 testable days
+#     by +0.0001 to +0.0003 — always upward, consistent with revision rather
+#     than noise. Reconstructed values are therefore AAA's revised figures, not
+#     what they published at the time. Tolerable: 0.03c against daily moves of
+#     50-200c.
+#   - Cents: the assumed day offset is wrong, and every reconstructed row would
+#     be a real price filed under the wrong date. Refuse.
+BACKFILL_WARN_DELTA = 0.00005
+BACKFILL_ABORT_DELTA = 0.01
 
 # AAA publishes on US Eastern time; the "date" of a reading is its ET date.
 EASTERN = ZoneInfo("America/New_York")
@@ -286,40 +312,99 @@ def write_csv(path: Path, reading: Reading, force: bool = False) -> bool:
     return True
 
 
-def backfill(path: Path) -> list[str]:
-    """Reconstruct single-day gaps from the next day's regular_yesterday.
+def validate_lag(
+    rows: list[dict[str, str]], column: str, days: int
+) -> tuple[float, int, str | None]:
+    """Check a lag column against days we observed directly.
 
-    Only `regular` is recoverable this way, so a backfilled row carries that
-    column and nothing else; `source_url` marks it as reconstructed so it is
-    never mistaken for a direct observation.
+    Returns (max_abs_delta, comparisons, refusal_reason). A refusal means the
+    offset assumption looks wrong, not that AAA revised something.
+    """
+    observed = {
+        r["date"]: as_float(r.get("regular"))
+        for r in rows
+        if r.get("date") and not (r.get("source_url") or "").startswith(BACKFILL_SOURCE)
+    }
+    worst, checked = 0.0, 0
+    for row in rows:
+        claimed = as_float(row.get(column))
+        if claimed is None:
+            continue
+        try:
+            target = (
+                date_cls.fromisoformat(row["date"]) - timedelta(days=days)
+            ).isoformat()
+        except (KeyError, ValueError):
+            continue
+        actual = observed.get(target)
+        if actual is None:
+            continue
+        checked += 1
+        worst = max(worst, abs(claimed - actual))
+
+    if checked and worst >= BACKFILL_ABORT_DELTA:
+        return worst, checked, (
+            f"{column} disagrees with directly observed prices by up to "
+            f"{worst:.4f} across {checked} overlapping day(s) — too large to be "
+            f"revision, so the {days}-day offset is probably wrong. Refusing to "
+            "reconstruct from it."
+        )
+    return worst, checked, None
+
+
+def backfill(path: Path) -> list[str]:
+    """Reconstruct missing days from AAA's own lag columns.
+
+    Because observations are consecutive, so are the lag columns: each one is a
+    parallel daily series running a fixed number of days behind. That makes
+    them a genuine backfill, not just gap repair — `regular_week_ago` extends
+    the record a week earlier than collection began.
+
+    Only `regular` is recoverable this way, so a reconstructed row carries that
+    column and nothing else, and `source_url` records which lag produced it so
+    it is never mistaken for a direct observation.
     """
     rows = read_existing(path)
     by_date = {r["date"]: r for r in rows if r.get("date")}
     added: list[str] = []
 
-    for row in sorted(rows, key=lambda r: r.get("date", "")):
-        claimed = as_float(row.get("regular_yesterday"))
-        if claimed is None:
+    for column, days in BACKFILL_LAGS:
+        worst, checked, refusal = validate_lag(rows, column, days)
+        if refusal:
+            print(f"warning: {refusal}", file=sys.stderr)
             continue
-        try:
-            missing = (
-                date_cls.fromisoformat(row["date"]) - timedelta(days=1)
-            ).isoformat()
-        except ValueError:
-            continue
-        if missing in by_date:
-            continue
+        if checked and worst >= BACKFILL_WARN_DELTA:
+            print(
+                f"note: {column} differs from directly observed prices by up to "
+                f"{worst:.4f} across {checked} overlapping day(s) — small enough "
+                "to be AAA revising its own series, so reconstructed values are "
+                "the revised figures rather than what was published at the time",
+                file=sys.stderr,
+            )
 
-        filled = {k: "" for k in FIELDNAMES}
-        filled["date"] = missing
-        filled["regular"] = PRICE_FORMAT.format(claimed)
-        filled["source_url"] = BACKFILL_SOURCE
-        by_date[missing] = filled
-        added.append(missing)
+        for row in sorted(rows, key=lambda r: r.get("date", "")):
+            claimed = as_float(row.get(column))
+            if claimed is None:
+                continue
+            try:
+                missing = (
+                    date_cls.fromisoformat(row["date"]) - timedelta(days=days)
+                ).isoformat()
+            except (KeyError, ValueError):
+                continue
+            if missing in by_date:
+                continue
+
+            filled = {k: "" for k in FIELDNAMES}
+            filled["date"] = missing
+            filled["regular"] = PRICE_FORMAT.format(claimed)
+            filled["source_url"] = f"{BACKFILL_SOURCE}{column}"
+            by_date[missing] = filled
+            added.append(missing)
 
     if added:
         write_rows(path, list(by_date.values()))
-    return added
+    return sorted(added)
 
 
 def append_to_sheet(sheet_id: str, reading: Reading, worksheet: str = "Sheet1") -> None:
