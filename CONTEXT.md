@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-_Regenerated 2026-08-10T14:32:57+00:00 by `forecast/score.py`. Do not hand-edit._
+_Regenerated 2026-08-10T21:05:28+00:00 by `forecast/score.py`. Do not hand-edit._
 
 This file is the working state of a daily gas-price forecast calibration loop. It is written for two readers: a human skimming, and a fresh Claude session with no memory of this project. If you are the latter, read DESIGN.md next — it holds the reasoning, the rejected alternatives, and the invariants.
 
@@ -15,9 +15,9 @@ The target is always the **change** in price, never the level, and thresholds ar
 - Observations: **18**
 - Range: `2026-07-24` to `2026-08-10`
 - Gaps: **0**
-- Forecasts written: **11**
+- Forecasts written: **12**
 - Forecasts scored: **11**
-- Awaiting outcome: **0**
+- Awaiting outcome: **1**
 
 Most recent scored call — `2026-08-10` (`prior` mode): predicted **-0.42c**, actual **-0.30c**, error **+0.12c**.
 
