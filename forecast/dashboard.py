@@ -41,54 +41,142 @@ Z_50 = 0.6744897501960817
 CHART_DAYS = 30
 
 
+def _md(text: str) -> str:
+    """Escape, then honour **bold**.
+
+    score.py speaks markdown because CONTEXT.md is markdown. Dropping that
+    straight into HTML rendered literal asterisks on the live page.
+    """
+    out = html.escape(text.lstrip("- ").strip())
+    parts = out.split("**")
+    return "".join(
+        part if i % 2 == 0 else f"<strong>{part}</strong>"
+        for i, part in enumerate(parts)
+    )
+
+
 def _f(value, places=4, dash="—"):
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return dash
     return f"{value:.{places}f}"
 
 
-def trust_verdict(scored, by_mode, sizes, brier_headline):
-    """The headline answer to "should I believe this yet?".
+def trust_score(scored, by_mode, sizes, brier_headline, n_train):
+    """How full the tank is: (fraction 0-1, label, one short sentence).
 
-    Deliberately pessimistic. The system spends its first months unable to
-    support any claim, and the page should say so in the largest text on it
-    rather than burying it under a plausible-looking Brier score.
+    A single gauge has to carry two different reasons for distrust, and the
+    fraction deliberately conflates them while the label separates them:
+
+      - **We don't know yet.** The needle sits low because evidence is thin.
+      - **We know it's bad.** The needle also sits low, because a model
+        measured and found no better than a coin flip has earned less trust
+        than one that simply hasn't been measured.
+
+    Both mean "don't lean on this", which is what the gauge is for. Anyone who
+    wants to know which kind of low it is reads the label.
+
+    The top of the range is reserved: nothing reaches Full without clearing the
+    n_eff >= 50 gate AND beating the coin-flip baseline. Bootstrap forecasts are
+    capped near Empty no matter how well they happen to score, because their
+    scores say nothing about the model that replaces them.
     """
     if not scored:
-        return ("none", "No evidence yet",
-                "Nothing has been scored. A forecast can only be scored once "
-                "its target date has been observed.")
+        return 0.02, "Unproven", "Nothing has been scored yet."
 
-    model_rows = by_mode.get("model", [])
-    if not model_rows:
-        return ("bootstrap", "Not the real model yet",
-                "Every forecast so far comes from the bootstrap prior — a rule "
-                "of thumb that carries a third of the recent average change "
-                "forward. It cannot anticipate a turn, and its scores say "
-                "nothing about the fitted model that replaces it.")
+    if not by_mode.get("model"):
+        # Progress toward the fitted model, not toward trustworthiness.
+        progress = min(n_train / 30.0, 1.0) if n_train else 0.0
+        return (
+            0.04 + 0.10 * progress,
+            "Warming up",
+            f"Still on the placeholder rule of thumb. The real model starts at "
+            f"30 training days ({n_train}/30).",
+        )
 
     n_eff = sizes.get("model", {}).get("binding", 0.0)
     if n_eff < 20:
-        return ("insufficient", "Not measurable yet",
-                f"The fitted model has {n_eff:.0f} effective observations. "
-                "Below 20, nothing here supports a claim about calibration.")
-    if n_eff < 50:
-        return ("directional", "Directional read only",
-                f"At {n_eff:.0f} effective observations, treat gaps under 10 "
-                "percentage points as noise.")
-
-    if brier_headline is None:
-        return ("directional", "Directional read only",
-                "Not enough scored forecasts at the headline threshold.")
+        return (
+            0.15 + 0.20 * (n_eff / 20.0),
+            "Gathering evidence",
+            f"The real model is running, but {n_eff:.0f} days of independent "
+            "evidence is too few to judge it.",
+        )
+    if n_eff < 50 or brier_headline is None:
+        return (
+            0.35 + 0.15 * ((min(n_eff, 50.0) - 20.0) / 30.0),
+            "Early signs",
+            f"Enough evidence for a direction at {n_eff:.0f} independent days, "
+            "not enough to trust a precise number.",
+        )
 
     skill = 0.25 - brier_headline["brier"]
     if skill <= 0:
-        return ("poor", "No better than a coin flip",
-                f"Headline Brier {brier_headline['brier']:.3f} against 0.250 "
-                "for a forecaster that always says 50%.")
-    return ("good", "Calibrated read available",
-            f"Headline Brier {brier_headline['brier']:.3f}, "
-            f"{skill:+.3f} better than always saying 50%.")
+        return (
+            0.08,
+            "Measured, and not good",
+            "Enough evidence now, and it says the forecasts are no better than "
+            "a coin flip.",
+        )
+
+    # 0.10 of Brier skill is a strong daily forecaster; treat it as Full.
+    fraction = 0.60 + 0.40 * min(skill / 0.10, 1.0)
+    label = (
+        "Extremely trustworthy" if fraction >= 0.85
+        else "Trustworthy" if fraction >= 0.72
+        else "Reasonably trustworthy"
+    )
+    return fraction, label, (
+        f"Measured over {n_eff:.0f} independent days and beating a coin flip "
+        f"by {skill:.3f}."
+    )
+
+
+def kind_for(fraction: float) -> str:
+    """CSS class for the verdict line, matching where the needle sits."""
+    if fraction >= 0.72:
+        return "good"
+    if fraction >= 0.35:
+        return "directional"
+    if fraction <= 0.10:
+        return "poor"
+    return "insufficient"
+
+
+def _gauge(fraction: float) -> str:
+    """A fuel gauge. Empty on the left, Full on the right, needle in between.
+
+    Chosen over a number because the honest answer is a position on a spectrum,
+    and a number invites a precision this does not have. Nobody misreads a fuel
+    gauge as claiming to the decimal point.
+    """
+    fraction = max(0.0, min(1.0, fraction))
+    cx, cy, r = 160.0, 152.0, 112.0
+    theta = math.radians(180.0 - fraction * 180.0)
+    nx, ny = cx + (r - 26) * math.cos(theta), cy - (r - 26) * math.sin(theta)
+
+    ticks = []
+    for i in range(5):
+        a = math.radians(180.0 - (i / 4.0) * 180.0)
+        x1, y1 = cx + (r - 9) * math.cos(a), cy - (r - 9) * math.sin(a)
+        x2, y2 = cx + (r + 9) * math.cos(a), cy - (r + 9) * math.sin(a)
+        ticks.append(f'<line class="tick" x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"/>')
+
+    return (
+        f'<svg class="gauge" viewBox="0 0 320 184" role="img" '
+        f'aria-label="Trustworthiness gauge, {fraction * 100:.0f} percent of full">'
+        '<defs><linearGradient id="fuel" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="var(--bad)"/>'
+        '<stop offset="50%" stop-color="var(--warn)"/>'
+        '<stop offset="100%" stop-color="var(--ok)"/>'
+        "</linearGradient></defs>"
+        f'<path class="arc" d="M {cx - r:.0f} {cy:.0f} A {r:.0f} {r:.0f} 0 0 1 {cx + r:.0f} {cy:.0f}"/>'
+        + "".join(ticks)
+        + f'<line class="needle" x1="{cx:.0f}" y1="{cy:.0f}" x2="{nx:.1f}" y2="{ny:.1f}"/>'
+        f'<circle class="pivot" cx="{cx:.0f}" cy="{cy:.0f}" r="7"/>'
+        f'<text class="gmark" x="{cx - r:.0f}" y="{cy + 22:.0f}" text-anchor="middle">E</text>'
+        f'<text class="gmark" x="{cx + r:.0f}" y="{cy + 22:.0f}" text-anchor="middle">F</text>'
+        "</svg>"
+    )
 
 
 def _sparkline(prices, pending):
@@ -186,6 +274,21 @@ padding-left:.9rem;margin:1rem 0 0}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
 a{color:var(--accent)}
 .scroll{overflow-x:auto}
+.gaugewrap{max-width:340px;margin:0 auto 1rem}
+.gauge{width:100%;height:auto;display:block}
+.arc{fill:none;stroke:url(#fuel);stroke-width:14;stroke-linecap:round;opacity:.9}
+.tick{stroke:var(--line);stroke-width:2}
+.needle{stroke:var(--fg);stroke-width:4;stroke-linecap:round}
+.pivot{fill:var(--fg)}
+.gmark{font-size:15px;font-weight:700;fill:var(--dim)}
+.gscale{display:flex;justify-content:space-between;font-size:.75rem;
+color:var(--dim);margin-top:-.35rem}
+.verdict{text-align:center}
+.why{text-align:center}
+details{margin-top:1.1rem}
+summary{cursor:pointer;font-size:.85rem;color:var(--dim);
+padding:.35rem 0;border-top:1px solid var(--line)}
+details .why{text-align:left;font-size:.86rem;margin:.7rem 0 0}
 """
 
 
@@ -193,7 +296,6 @@ def render_site(scored, prices, forecasts, pending, by_mode, sizes,
                 brier_headline, spread_line, coeff, n_train):
     """Build the full page. All inputs come from score.py's own computations."""
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    kind, verdict, why = trust_verdict(scored, by_mode, sizes, brier_headline)
     nxt = pending[-1] if pending else None
     E = html.escape
 
@@ -208,30 +310,51 @@ def render_site(scored, prices, forecasts, pending, by_mode, sizes,
     )
 
     # --- 1. trust -----------------------------------------------------------
+    fraction, verdict, why = trust_score(
+        scored, by_mode, sizes, brier_headline, n_train
+    )
     p.append('<div class="card">')
     p.append("<h2>How much to trust this</h2>")
-    p.append(f'<p class="verdict {kind}">{E(verdict)}</p>')
+    p.append('<div class="gaugewrap">')
+    p.append(_gauge(fraction))
+    p.append('<div class="gscale"><span>Not trustworthy</span>'
+             "<span>Extremely trustworthy</span></div>")
+    p.append("</div>")
+    p.append(f'<p class="verdict {E(kind_for(fraction))}">{E(verdict)}</p>')
     p.append(f'<p class="why">{E(why)}</p>')
-    p.append('<div class="facts">')
+
     model_n = len(by_mode.get("model", []))
     prior_n = len(by_mode.get("prior", []))
     n_eff = sizes.get("model", {}).get("binding") or sizes.get("prior", {}).get("binding")
-    p.append(f'<div class="fact"><div class="k">Scored</div>'
+    p.append('<div class="facts">')
+    p.append(f'<div class="fact"><div class="k">Days scored</div>'
              f'<div class="v">{len(scored)}</div></div>')
-    p.append(f'<div class="fact"><div class="k">Effective n</div>'
+    p.append(f'<div class="fact"><div class="k">Independent days</div>'
              f'<div class="v">{_f(n_eff, 1)}</div></div>')
-    p.append(f'<div class="fact"><div class="k">Fitted / bootstrap</div>'
+    p.append(f'<div class="fact"><div class="k">Real / placeholder</div>'
              f'<div class="v">{model_n} / {prior_n}</div></div>')
-    p.append(f'<div class="fact"><div class="k">Training rows</div>'
+    p.append(f'<div class="fact"><div class="k">Until real model</div>'
              f'<div class="v">{n_train} / 30</div></div>')
     p.append("</div>")
-    p.append(f'<p class="note">{E(spread_line.lstrip("- "))}</p>')
-    if not by_mode.get("model"):
-        p.append(
-            '<p class="note"><strong>Effective n</strong> is not the number of '
-            "days. Consecutive forecasts are nearly the same bet, so it counts "
-            "independent evidence, which is always less.</p>"
-        )
+
+    # Everything below is true and occasionally important, and none of it
+    # belongs in the first five seconds. <details> keeps it a click away
+    # without a line of JavaScript.
+    p.append("<details><summary>What these numbers mean</summary>")
+    p.append(
+        '<p class="why"><strong>Independent days</strong> is not the number of '
+        "days. Two forecasts made a day apart are nearly the same bet, so this "
+        "counts how much genuinely separate evidence there is — always less, "
+        "often by half.</p>"
+    )
+    p.append(f'<p class="why">{_md(spread_line)}</p>')
+    p.append(
+        '<p class="why">The gauge stays near Empty until the real model has '
+        "been measured over enough independent days to beat a coin flip. A "
+        "model that has been measured and found wanting sits low too — the "
+        "label says which.</p>"
+    )
+    p.append("</details>")
     p.append("</div>")
 
     # --- 2. tomorrow --------------------------------------------------------

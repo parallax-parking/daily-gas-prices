@@ -39,22 +39,44 @@ padding-left:.9rem;margin:1rem 0 0}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
 a{color:var(--accent)}
 .scroll{overflow-x:auto}
+.gaugewrap{max-width:340px;margin:0 auto 1rem}
+.gauge{width:100%;height:auto;display:block}
+.arc{fill:none;stroke:url(#fuel);stroke-width:14;stroke-linecap:round;opacity:.9}
+.tick{stroke:var(--line);stroke-width:2}
+.needle{stroke:var(--fg);stroke-width:4;stroke-linecap:round}
+.pivot{fill:var(--fg)}
+.gmark{font-size:15px;font-weight:700;fill:var(--dim)}
+.gscale{display:flex;justify-content:space-between;font-size:.75rem;
+color:var(--dim);margin-top:-.35rem}
+.verdict{text-align:center}
+.why{text-align:center}
+details{margin-top:1.1rem}
+summary{cursor:pointer;font-size:.85rem;color:var(--dim);
+padding:.35rem 0;border-top:1px solid var(--line)}
+details .why{text-align:left;font-size:.86rem;margin:.7rem 0 0}
 </style>
 <div class="wrap">
 <h1>AAA national average — daily forecast</h1>
-<p class="sub">Updated 2026-08-09T17:39:49+00:00 · <a href="https://github.com/parallax-parking/daily-gas-prices">source</a> · <a href="https://github.com/parallax-parking/daily-gas-prices/blob/main/CONTEXT.md">full report</a></p>
+<p class="sub">Updated 2026-08-10T12:34:56+00:00 · <a href="https://github.com/parallax-parking/daily-gas-prices">source</a> · <a href="https://github.com/parallax-parking/daily-gas-prices/blob/main/CONTEXT.md">full report</a></p>
 <div class="card">
 <h2>How much to trust this</h2>
-<p class="verdict bootstrap">Not the real model yet</p>
-<p class="why">Every forecast so far comes from the bootstrap prior — a rule of thumb that carries a third of the recent average change forward. It cannot anticipate a turn, and its scores say nothing about the fitted model that replaces it.</p>
-<div class="facts">
-<div class="fact"><div class="k">Scored</div><div class="v">10</div></div>
-<div class="fact"><div class="k">Effective n</div><div class="v">3.0</div></div>
-<div class="fact"><div class="k">Fitted / bootstrap</div><div class="v">0 / 10</div></div>
-<div class="fact"><div class="k">Training rows</div><div class="v">9 / 30</div></div>
+<div class="gaugewrap">
+<svg class="gauge" viewBox="0 0 320 184" role="img" aria-label="Trustworthiness gauge, 7 percent of full"><defs><linearGradient id="fuel" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="var(--bad)"/><stop offset="50%" stop-color="var(--warn)"/><stop offset="100%" stop-color="var(--ok)"/></linearGradient></defs><path class="arc" d="M 48 152 A 112 112 0 0 1 272 152"/><line class="tick" x1="57.0" y1="152.0" x2="39.0" y2="152.0"/><line class="tick" x1="87.2" y1="79.2" x2="74.4" y2="66.4"/><line class="tick" x1="160.0" y1="49.0" x2="160.0" y2="31.0"/><line class="tick" x1="232.8" y1="79.2" x2="245.6" y2="66.4"/><line class="tick" x1="263.0" y1="152.0" x2="281.0" y2="152.0"/><line class="needle" x1="160" y1="152" x2="76.1" y2="133.2"/><circle class="pivot" cx="160" cy="152" r="7"/><text class="gmark" x="48" y="174" text-anchor="middle">E</text><text class="gmark" x="272" y="174" text-anchor="middle">F</text></svg>
+<div class="gscale"><span>Not trustworthy</span><span>Extremely trustworthy</span></div>
 </div>
-<p class="note">Spread check: **held** at n_eff = 3.0 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.</p>
-<p class="note"><strong>Effective n</strong> is not the number of days. Consecutive forecasts are nearly the same bet, so it counts independent evidence, which is always less.</p>
+<p class="verdict poor">Warming up</p>
+<p class="why">Still on the placeholder rule of thumb. The real model starts at 30 training days (9/30).</p>
+<div class="facts">
+<div class="fact"><div class="k">Days scored</div><div class="v">10</div></div>
+<div class="fact"><div class="k">Independent days</div><div class="v">3.0</div></div>
+<div class="fact"><div class="k">Real / placeholder</div><div class="v">0 / 10</div></div>
+<div class="fact"><div class="k">Until real model</div><div class="v">9 / 30</div></div>
+</div>
+<details><summary>What these numbers mean</summary>
+<p class="why"><strong>Independent days</strong> is not the number of days. Two forecasts made a day apart are nearly the same bet, so this counts how much genuinely separate evidence there is — always less, often by half.</p>
+<p class="why">Spread check: <strong>held</strong> at n_eff = 3.0 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.</p>
+<p class="why">The gauge stays near Empty until the real model has been measured over enough independent days to beat a coin flip. A model that has been measured and found wanting sits low too — the label says which.</p>
+</details>
 </div>
 <div class="card">
 <h2>Where 2026-08-10 lands</h2>

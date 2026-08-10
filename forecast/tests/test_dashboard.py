@@ -30,6 +30,16 @@ import score as sc  # noqa: E402
 from test_forecast import random_walk, write_observations  # noqa: E402
 
 
+def verdict_of(page: str) -> str:
+    """The verdict line only.
+
+    "Extremely trustworthy" is also printed as the right-hand end of the gauge
+    scale, so a bare substring search cannot tell a claim from a label.
+    """
+    match = re.search(r'<p class="verdict[^"]*">(.*?)</p>', page, re.S)
+    return match.group(1).strip() if match else ""
+
+
 def build(tmp: str, days: int) -> str:
     obs, forecasts = Path(tmp) / "obs.csv", Path(tmp) / "fc.csv"
     context, site = Path(tmp) / "CONTEXT.md", Path(tmp) / "docs" / "index.html"
@@ -64,35 +74,97 @@ class SelfContained(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             page = build(tmp, 2)
         self.assertIn("How much to trust", page)
-        self.assertNotIn("Calibrated read available", page)
+        self.assertIn('<svg class="gauge"', page)
+        self.assertNotIn("trustworthy</p>", page.lower())
+
+    def test_no_literal_markdown_leaks_into_the_html(self):
+        """score.py speaks markdown for CONTEXT.md. The page rendered
+        '**held**' verbatim until _md was added."""
+        with tempfile.TemporaryDirectory() as tmp:
+            page = build(tmp, 20)
+        self.assertNotIn("**", page)
 
 
 class TellsTheTruthAboutTrust(unittest.TestCase):
-    def test_bootstrap_only_is_never_called_calibrated(self):
-        """The prior's scores say nothing about the fitted model. The page has
-        to say so, because a Brier score printed large looks like a verdict."""
+    def test_bootstrap_only_never_moves_the_needle_far(self):
+        """The prior's scores say nothing about the fitted model, however well
+        they happen to come out, so the gauge stays near Empty."""
         with tempfile.TemporaryDirectory() as tmp:
             page = build(tmp, 20)
-        self.assertIn("Not the real model yet", page)
-        self.assertNotIn("Calibrated read available", page)
-        self.assertNotIn("Directional read only", page)
+        self.assertEqual(verdict_of(page), "Warming up")
+        fraction, label, _ = dashboard.trust_score(
+            [1] * 19, {"model": [], "prior": [1] * 19}, {}, None, 29
+        )
+        self.assertLess(fraction, 0.20, "bootstrap should sit near Empty")
 
-    def test_verdict_never_claims_more_than_the_gate_allows(self):
+    def test_never_claims_trustworthy_below_the_gate(self):
         for days in (10, 20, 45, 90):
             with tempfile.TemporaryDirectory() as tmp:
                 page = build(tmp, days)
-            if "Calibrated read available" in page:
-                match = re.search(r'Effective n</div>\s*<div class="v">([\d.]+)', page)
-                self.assertIsNotNone(match, f"days={days}: no effective n shown")
+            if "rustworthy" in verdict_of(page):
+                match = re.search(
+                    r'Independent days</div>\s*<div class="v">([\d.]+)', page
+                )
+                self.assertIsNotNone(match, f"days={days}: no independent-day count")
                 self.assertGreaterEqual(
                     float(match.group(1)), 50.0,
-                    f"days={days}: claimed calibration below the n_eff=50 gate",
+                    f"days={days}: claimed trustworthy below the 50-day gate",
                 )
 
-    def test_effective_n_is_shown_not_just_raw_count(self):
+    def test_independent_days_is_shown_not_just_raw_count(self):
         with tempfile.TemporaryDirectory() as tmp:
             page = build(tmp, 40)
-        self.assertIn("Effective n", page)
+        self.assertIn("Independent days", page)
+
+
+class Gauge(unittest.TestCase):
+    """The needle is the whole message, so its position has to be defensible."""
+
+    def score(self, n_scored, model, n_eff, brier, n_train):
+        by_mode = {"model": [1] * model, "prior": [1] * (n_scored - model)}
+        sizes = {"model": {"binding": n_eff}} if model else {}
+        head = {"brier": brier} if brier is not None else None
+        return dashboard.trust_score([1] * n_scored, by_mode, sizes, head, n_train)
+
+    def test_fraction_always_within_bounds(self):
+        for case in [(0, 0, 0, None, 0), (10, 0, 0, None, 9), (30, 30, 8, None, 30),
+                     (90, 90, 60, 0.26, 90), (120, 120, 80, 0.02, 120)]:
+            fraction, _, _ = self.score(*case)
+            self.assertGreaterEqual(fraction, 0.0)
+            self.assertLessEqual(fraction, 1.0)
+
+    def test_measured_and_bad_scores_lower_than_merely_unmeasured(self):
+        """A model shown to be no better than a coin flip has earned less
+        trust than one that simply has not been tested yet."""
+        unmeasured, _, _ = self.score(30, 30, 8, None, 30)
+        measured_bad, label, _ = self.score(90, 90, 60, 0.26, 90)
+        self.assertLess(measured_bad, unmeasured)
+        self.assertIn("not good", label)
+
+    def test_full_requires_both_evidence_and_skill(self):
+        strong_but_thin, _, _ = self.score(30, 30, 10, 0.10, 30)
+        self.assertLess(strong_but_thin, 0.6, "skill alone must not fill the tank")
+        thick_but_weak, _, _ = self.score(120, 120, 80, 0.249, 120)
+        self.assertLess(thick_but_weak, 0.72, "evidence alone must not either")
+        both, label, _ = self.score(120, 120, 80, 0.15, 120)
+        self.assertGreaterEqual(both, 0.85)
+        self.assertEqual(label, "Extremely trustworthy")
+
+    def test_more_skill_never_lowers_the_needle(self):
+        previous = -1.0
+        for brier in (0.245, 0.23, 0.20, 0.17, 0.14):
+            fraction, _, _ = self.score(120, 120, 80, brier, 120)
+            self.assertGreaterEqual(fraction, previous)
+            previous = fraction
+
+    def test_needle_stays_inside_the_arc(self):
+        for fraction in (-5.0, 0.0, 0.5, 1.0, 42.0):
+            svg = dashboard._gauge(fraction)
+            self.assertIn("<svg", svg)
+            self.assertNotIn("nan", svg.lower())
+            for value in re.findall(r'(?:x|y)[12]?="(-?[\d.]+)"', svg):
+                self.assertGreater(float(value), -60.0)
+                self.assertLess(float(value), 380.0)
 
 
 class NextDayRange(unittest.TestCase):
