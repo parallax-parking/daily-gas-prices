@@ -246,3 +246,75 @@ class HalfCentDisplay(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DailyCycleOrder(unittest.TestCase):
+    """The job runs score -> forecast. The page is rendered by the score pass,
+    so without a second render it describes the world as it was one forecast
+    ago and reports nothing pending.
+
+    This went unnoticed for ten days because the other tests in this file run
+    score *last*, which is not what the workflow does. A test harness whose
+    ordering differs from production tests something production never does.
+    """
+
+    def cycle(self, tmp: str, days: int, refresh: bool) -> str:
+        obs, forecasts = Path(tmp) / "obs.csv", Path(tmp) / "fc.csv"
+        context, site = Path(tmp) / "CONTEXT.md", Path(tmp) / "docs" / "index.html"
+        series = random_walk(days)
+        score_args = [
+            "--observations", str(obs), "--forecasts", str(forecasts),
+            "--out", str(context), "--site", str(site),
+        ]
+        fc_args = ["--observations", str(obs), "--out", str(forecasts)]
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Warm up so there is a record to score at all.
+            for cut in range(2, days):
+                write_observations(obs, series[:cut])
+                fc.main(fc_args)
+            # Then one full day in the workflow's exact order.
+            write_observations(obs, series[:days])
+            sc.main(score_args)          # 1. score yesterday
+            fc.main(fc_args)             # 2. forecast tomorrow
+            if refresh:
+                sc.main(score_args)      # 3. re-render with it
+        return site.read_text(encoding="utf-8")
+
+    def test_without_the_refresh_the_page_hides_tomorrows_forecast(self):
+        """Regression: this is what the live page did every day."""
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self.cycle(tmp, 12, refresh=False)
+        self.assertIn("No forecast is currently awaiting an outcome", page)
+
+    def test_the_refresh_makes_tomorrows_forecast_visible(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = self.cycle(tmp, 12, refresh=True)
+        self.assertNotIn("No forecast is currently awaiting an outcome", page)
+        self.assertRegex(page, r"<h2>Where \d{4}-\d{2}-\d{2} lands</h2>")
+        self.assertIn("confidence", page)
+
+    def test_the_refresh_scores_nothing_extra(self):
+        """Re-rendering must not quietly score the forecast just written -
+        that would be scoring against its own input, which invariant 4 forbids.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            obs, forecasts = Path(tmp) / "obs.csv", Path(tmp) / "fc.csv"
+            context, site = Path(tmp) / "CONTEXT.md", Path(tmp) / "docs" / "x.html"
+            series = random_walk(12)
+            args = [
+                "--observations", str(obs), "--forecasts", str(forecasts),
+                "--out", str(context), "--site", str(site),
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                for cut in range(2, 13):
+                    write_observations(obs, series[:cut])
+                    fc.main(["--observations", str(obs), "--out", str(forecasts)])
+                sc.main(args)
+                first = context.read_text(encoding="utf-8")
+                fc.main(["--observations", str(obs), "--out", str(forecasts)])
+                sc.main(args)
+                second = context.read_text(encoding="utf-8")
+
+        scored = lambda text: re.search(r"Forecasts scored: \*\*(\d+)\*\*", text).group(1)
+        self.assertEqual(scored(first), scored(second))
