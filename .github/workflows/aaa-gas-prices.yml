@@ -82,6 +82,16 @@ jobs:
       - name: Forecast tomorrow
         run: python forecast/forecast.py --out data/forecasts.csv
 
+      # Re-render only. The scoring pass above is the one invariant 4 cares
+      # about: scoring happens before the new forecast is *made*, so nothing is
+      # ever scored against its own input. But the report and dashboard are
+      # rendered from state the forecast step then changes, which left the page
+      # saying "no forecast awaiting an outcome" while one sat in the CSV.
+      # This pass scores nothing new — tomorrow's forecast has no outcome yet —
+      # it only lets the page show it.
+      - name: Refresh the report with the new forecast
+        run: python forecast/score.py --out CONTEXT.md --site docs/index.html
+
       - name: Commit the new row
         run: |
           if [ -z "$(git status --porcelain data CONTEXT.md docs)" ]; then
