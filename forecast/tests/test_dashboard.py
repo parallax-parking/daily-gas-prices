@@ -390,3 +390,64 @@ class DailyCycleOrder(unittest.TestCase):
 
         scored = lambda text: re.search(r"Forecasts scored: \*\*(\d+)\*\*", text).group(1)
         self.assertEqual(scored(first), scored(second))
+
+
+class DistributionCurve(unittest.TestCase):
+    """The curve is the panel's lead visual, so its geometry has to be right
+    and its labels have to agree with the headline."""
+
+    def svg(self, level=4.0121, mu=-0.4195, sigma=1.0):
+        return dashboard._distribution(level, mu, sigma)
+
+    def test_drawn_band_matches_the_stated_range(self):
+        """The shaded region and the label must describe the same interval.
+        They diverged on first render: the text snapped outward, the geometry
+        did not, so the band visibly ended short of its own caption."""
+        import thresholds as th
+        level, mu, sigma = 4.0121, -0.4195, 1.0
+        centre = level + mu / 100.0
+        lo = th.snap(centre - dashboard.Z_80 * sigma / 100.0, mode="down")
+        hi = th.snap(centre + dashboard.Z_80 * sigma / 100.0, mode="up")
+        svg = self.svg(level, mu, sigma)
+        self.assertIn(f"${lo:.3f}–${hi:.3f}", svg)
+
+    def test_geometry_stays_inside_the_viewbox(self):
+        for sigma in (0.25, 1.0, 5.0):
+            svg = self.svg(sigma=sigma)
+            self.assertNotIn("nan", svg.lower())
+            for value in re.findall(r'(?:x|x1|x2)="(-?[\d.]+)"', svg):
+                self.assertGreaterEqual(float(value), -1.0)
+                self.assertLessEqual(float(value), 721.0)
+            for value in re.findall(r'(?:y|y1|y2)="(-?[\d.]+)"', svg):
+                self.assertGreaterEqual(float(value), -1.0)
+                self.assertLessEqual(float(value), 239.0)
+
+    def test_today_marker_sits_where_today_is(self):
+        """A forecast leaning down must draw today to the RIGHT of the centre,
+        or the picture says the opposite of the numbers."""
+        svg = self.svg(level=4.0121, mu=-0.4195, sigma=1.0)
+        today_x = float(re.search(r'class="dtoday" x1="([\d.]+)"', svg).group(1))
+        mid_x = float(re.search(r'class="dmid" x1="([\d.]+)"', svg).group(1))
+        self.assertGreater(today_x, mid_x)
+
+        rising = self.svg(level=4.0121, mu=+0.5, sigma=1.0)
+        today_x = float(re.search(r'class="dtoday" x1="([\d.]+)"', rising).group(1))
+        mid_x = float(re.search(r'class="dmid" x1="([\d.]+)"', rising).group(1))
+        self.assertLess(today_x, mid_x)
+
+    def test_degenerate_sigma_draws_nothing_rather_than_dividing_by_zero(self):
+        self.assertEqual(dashboard._distribution(4.0, 0.0, 0.0), "")
+
+    def test_labels_cannot_collide(self):
+        """Band caption at the top, today's label below the axis. Even when
+        today sits exactly on the centre they are on different rows."""
+        svg = self.svg(level=4.0121, mu=0.0, sigma=1.0)
+        band_y = float(re.search(r'class="dband-lbl"[^>]*y="([\d.]+)"', svg).group(1))
+        today_y = float(re.search(r'class="dlbl"[^>]*y="([\d.]+)"', svg).group(1))
+        self.assertGreater(today_y - band_y, 100.0)
+
+    def test_appears_in_the_rendered_page(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = build(tmp, 14)
+        self.assertIn('<svg class="dist"', page)
+        self.assertIn("80%+ of the time", page)
