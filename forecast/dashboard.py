@@ -179,6 +179,86 @@ def _gauge(fraction: float) -> str:
     )
 
 
+def _distribution(level, mu_c, sigma_c):
+    """The predictive distribution as a shaded curve over price.
+
+    Form: single-series density, which is what the reader's job asks for —
+    "where is the probability concentrated". Not a bar chart of the ladder;
+    the ladder answers "what are the odds at exactly X" and the two questions
+    want different pictures, so the page carries both.
+
+    Colour: sequential, one hue, more-likely = stronger. The central 80% is
+    filled solid and the tails drop to a wash, so the shaded region *is* the
+    headline range rather than a separate fact to reconcile.
+
+    No hover layer, deliberately. The page ships without scripts, and the
+    guidance that matters — never gate a value behind a tooltip — is satisfied
+    because every probability is also printed in the ladder below.
+    """
+    sigma = sigma_c / 100.0
+    if sigma <= 0:
+        return ""
+    centre = level + mu_c / 100.0
+    lo, hi = centre - 3.0 * sigma, centre + 3.0 * sigma
+    lo80 = snap(centre - Z_80 * sigma, mode="down")
+    hi80 = snap(centre + Z_80 * sigma, mode="up")
+
+    w, h = 720.0, 238.0
+    pad_l, pad_r, base, top = 26.0, 26.0, 168.0, 34.0
+    x = lambda price: pad_l + (w - pad_l - pad_r) * (price - lo) / (hi - lo)
+    y = lambda density: base - (base - top) * density
+
+    def density(price):
+        z = (price - centre) / sigma
+        return math.exp(-0.5 * z * z)
+
+    def area(from_price, to_price, steps=90):
+        pts = [
+            (from_price + (to_price - from_price) * i / steps) for i in range(steps + 1)
+        ]
+        head = " ".join(f"{x(p):.1f},{y(density(p)):.1f}" for p in pts)
+        return f"M {x(from_price):.1f},{base:.1f} L {head} L {x(to_price):.1f},{base:.1f} Z"
+
+    out = [
+        f'<svg class="dist" viewBox="0 0 {w:.0f} {h:.0f}" role="img" '
+        f'aria-label="Probability distribution for tomorrow\'s price, centred on '
+        f'${centre:.3f}, 80% between ${lo80:.3f} and ${hi80:.3f}">',
+        f'<path class="dtail" d="{area(lo, hi)}"/>',
+        f'<path class="dband" d="{area(lo80, hi80)}"/>',
+    ]
+
+    # Half-cent ticks, labelled sparsely so they never collide.
+    first = snap(lo, mode="up")
+    steps = int((snap(hi, mode="down") - first) / DISPLAY_STEP) + 1
+    label_every = max(1, round(steps / 7))
+    for i in range(max(steps, 0)):
+        price = round(first + i * DISPLAY_STEP, 10)
+        px = x(price)
+        out.append(f'<line class="dtick" x1="{px:.1f}" y1="{base:.1f}" '
+                   f'x2="{px:.1f}" y2="{base + 4:.1f}"/>')
+        if i % label_every == 0:
+            out.append(f'<text class="daxis" x="{px:.1f}" y="{base + 18:.0f}" '
+                       f'text-anchor="middle">{price:.3f}</text>')
+
+    out.append(f'<line class="daxisline" x1="{pad_l:.0f}" y1="{base:.1f}" '
+               f'x2="{w - pad_r:.0f}" y2="{base:.1f}"/>')
+
+    # Today, and the middle estimate: the two reference points a reader needs
+    # to see which way the forecast leans.
+    out.append(f'<line class="dtoday" x1="{x(level):.1f}" y1="{top:.1f}" '
+               f'x2="{x(level):.1f}" y2="{base + 6:.1f}"/>')
+    out.append(f'<text class="dlbl" x="{x(level):.1f}" y="{base + 36:.0f}" '
+               f'text-anchor="middle">today ${level:.3f}</text>')
+    out.append(f'<line class="dmid" x1="{x(centre):.1f}" y1="{y(1.0):.1f}" '
+               f'x2="{x(centre):.1f}" y2="{base:.1f}"/>')
+    out.append(
+        f'<text class="dband-lbl" x="{w / 2:.0f}" y="16" text-anchor="middle">'
+        f'80%+ of the time, ${lo80:.3f}–${hi80:.3f}</text>'
+    )
+    out.append("</svg>")
+    return "".join(out)
+
+
 def _sparkline(prices, pending):
     """Price history with the pending forecast's 80% interval on the end."""
     days = sorted(prices)[-CHART_DAYS:]
@@ -235,9 +315,9 @@ def _sparkline(prices, pending):
 
 CSS = """
 :root{--bg:#fbfbfa;--fg:#1a1a19;--dim:#6b6b68;--line:#e0e0dc;--card:#fff;
---ok:#2f7d52;--warn:#a8620a;--bad:#a33a2e;--accent:#3d5a80}
+--ok:#2f7d52;--warn:#a8620a;--bad:#a33a2e;--accent:#2a78d6}
 @media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eceae5;--dim:#9a9792;
---line:#33312d;--card:#1e1c1a;--ok:#6cc08a;--warn:#e0a057;--bad:#e0796a;--accent:#8fb3d9}}
+--line:#33312d;--card:#1e1c1a;--ok:#6cc08a;--warn:#e0a057;--bad:#e0796a;--accent:#3987e5}}
 *{box-sizing:border-box}
 body{margin:0;padding:2rem 1.25rem 4rem;background:var(--bg);color:var(--fg);
 font:16px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -274,6 +354,15 @@ padding-left:.9rem;margin:1rem 0 0}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
 a{color:var(--accent)}
 .scroll{overflow-x:auto}
+.dist{width:100%;height:auto;display:block;margin:.2rem 0 .6rem}
+.dtail{fill:var(--accent);opacity:.16}
+.dband{fill:var(--accent);opacity:.42}
+.daxisline,.dtick{stroke:var(--line);stroke-width:1}
+.daxis{font-size:11px;fill:var(--dim);font-variant-numeric:tabular-nums}
+.dtoday{stroke:var(--fg);stroke-width:1.5;stroke-dasharray:3 3;opacity:.65}
+.dmid{stroke:var(--accent);stroke-width:2}
+.dlbl{font-size:11px;fill:var(--dim)}
+.dband-lbl{font-size:12px;font-weight:600;fill:var(--fg)}
 .gaugewrap{max-width:340px;margin:0 auto 1rem}
 .gauge{width:100%;height:auto;display:block}
 .arc{fill:none;stroke:url(#fuel);stroke-width:14;stroke-linecap:round;opacity:.9}
@@ -382,6 +471,8 @@ def render_site(scored, prices, forecasts, pending, by_mode, sizes,
             f'${hi50_s:.3f}.</p>'
         )
 
+        p.append(_distribution(level, mu, sigma))
+
         today_rung = snap(level)
         p.append('<div class="scroll"><table><thead><tr>'
                  '<th>Chance the price is above</th><th class="n">Probability</th>'
@@ -391,19 +482,27 @@ def render_site(scored, prices, forecasts, pending, by_mode, sizes,
             p.append(f'<tr><td>${price:.3f}{mark}</td>'
                      f'<td class="n">{prob * 100:.1f}%</td></tr>')
         p.append("</tbody></table></div>")
+        p.append("<details><summary>How to read this</summary>")
         p.append(
-            f'<p class="note">Prices are shown in ${DISPLAY_STEP:.3f} steps for '
-            "readability. The probabilities are computed from the forecast's "
-            "own centre and spread, not rounded off a stored table, so every "
-            "rung is exact for the price beside it.</p>"
+            '<p class="why">The shaded hump is where tomorrow\'s price is likely '
+            "to land — taller means more likely. The darker middle is the 80% "
+            "range; the pale tails are the outcomes that would be a surprise. "
+            "The dashed line is today.</p>"
+        )
+        p.append(
+            f'<p class="why">Prices step in ${DISPLAY_STEP:.3f} for readability, '
+            "but each probability is computed for its own price rather than "
+            "rounded off a stored table.</p>"
         )
         if nxt.get("mode") == "prior":
             p.append(
-                '<p class="note">This came from the bootstrap prior, not the '
+                '<p class="why">This came from the bootstrap prior, not the '
                 "fitted model. It carries a third of the recent average change "
                 "forward and assumes a fixed 1¢ spread, so it lags any turn "
-                "and its range is a guess rather than a measurement.</p>"
+                "and the width of that hump is a guess rather than a "
+                "measurement.</p>"
             )
+        p.append("</details>")
     else:
         p.append("<h2>Next forecast</h2>")
         p.append('<p class="why">No forecast is currently awaiting an outcome. '
