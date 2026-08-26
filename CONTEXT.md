@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-_Regenerated 2026-08-25T14:06:23+00:00 by `forecast/score.py`. Do not hand-edit._
+_Regenerated 2026-08-26T14:05:55+00:00 by `forecast/score.py`. Do not hand-edit._
 
 This file is the working state of a daily gas-price forecast calibration loop. It is written for two readers: a human skimming, and a fresh Claude session with no memory of this project. If you are the latter, read DESIGN.md next — it holds the reasoning, the rejected alternatives, and the invariants.
 
@@ -12,59 +12,59 @@ The target is always the **change** in price, never the level, and thresholds ar
 
 ## Data on hand
 
-- Observations: **33**
-- Range: `2026-07-24` to `2026-08-25`
+- Observations: **34**
+- Range: `2026-07-24` to `2026-08-26`
 - Gaps: **0**
-- Forecasts written: **27**
-- Forecasts scored: **26**
+- Forecasts written: **28**
+- Forecasts scored: **27**
 - Awaiting outcome: **1**
 
-Most recent scored call — `2026-08-25` (`prior` mode): predicted **+0.18c**, actual **-0.22c**, error **-0.40c**.
+Most recent scored call — `2026-08-26` (`prior` mode): predicted **+0.16c**, actual **+0.45c**, error **+0.29c**.
 
 ## What the model is keying on
 
-**Not fitted yet.** The ridge model needs 30 complete training rows and has **25**. Until then every forecast comes from the bootstrap prior, which is a rule of thumb with no coefficients to show.
+**Not fitted yet.** The ridge model needs 30 complete training rows and has **26**. Until then every forecast comes from the bootstrap prior, which is a rule of thumb with no coefficients to show.
 
 ## Calibration
 
 `prior` and `model` rows are reported separately and never pooled. Prior-mode rows are bootstrap output and say nothing about model skill.
 
-### mode = `prior` (n = 26)
+### mode = `prior` (n = 27)
 
-- Effective n, by error correlation: **5.8** (lag-1 r = +0.64)
-- Effective n, by price-change correlation: **5.3** (lag-1 r = +0.66)
-- **Gating on the lower: n_eff = 5.3** (the outcome figure).
+- Effective n, by error correlation: **6.1** (lag-1 r = +0.63)
+- Effective n, by price-change correlation: **5.6** (lag-1 r = +0.65)
+- **Gating on the lower: n_eff = 5.6** (the outcome figure).
 - The two figures are close, which means the model is not yet removing much of the day-to-day overlap between consecutive forecasts.
 
-- **Nothing is concludable at n_eff = 5.3.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
+- **Nothing is concludable at n_eff = 5.6.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
 
 | threshold | Brier | vs 0.25 | base rate | n |
 |---|---|---|---|---|
-| > -2c | 0.0368 | +0.2132 | 0.96 | 26 |
-| > -1c | 0.1146 | +0.1354 | 0.85 | 26 |
-| > +0c **(headline)** | 0.2565 | -0.0065 | 0.38 | 26 |
-| > +1c | 0.1342 | +0.1158 | 0.15 | 26 |
-| > +2c | 0.1113 | +0.1387 | 0.12 | 26 |
+| > -2c | 0.0354 | +0.2146 | 0.96 | 27 |
+| > -1c | 0.1109 | +0.1391 | 0.85 | 27 |
+| > +0c **(headline)** | 0.2541 | -0.0041 | 0.41 | 27 |
+| > +1c | 0.1307 | +0.1193 | 0.15 | 27 |
+| > +2c | 0.1072 | +0.1428 | 0.11 | 27 |
 
 Judge this system on the `> +0c` row, secondarily `±1c`. The ±2c thresholds routinely resolve before they are asked — a Brier near zero against a base rate of 0 or 1 measures nothing. **Do not average across the grid and quote the result as 'the Brier score'.**
 
 **Predictive distribution**
 
-- PIT mean: **0.450** (target 0.500)
-- 80% interval coverage: **73.1%** (target 80.0%)
-- Residual sd 1.31c vs claimed sigma 1.00c (ratio 1.31)
-- Spread check: **held** at n_eff = 5.3 (needs 20). Errors currently look wider than the claimed sigma, but that comparison is not yet evidence.
+- PIT mean: **0.456** (target 0.500)
+- 80% interval coverage: **74.1%** (target 80.0%)
+- Residual sd 1.29c vs claimed sigma 1.00c (ratio 1.29)
+- Spread check: **held** at n_eff = 5.6 (needs 20). Errors currently look wider than the claimed sigma, but that comparison is not yet evidence.
 
 **Reliability** (pooled across thresholds; bins with n<3 suppressed)
 
 | bin | n | predicted | observed | gap |
 |---|---|---|---|---|
-| 0.0–0.1 | 31 | 0.035 | 0.129 | +9.4pp |
-| 0.1–0.3 | 21 | 0.186 | 0.143 | -4.3pp |
+| 0.0–0.1 | 32 | 0.035 | 0.125 | +9.0pp |
+| 0.1–0.3 | 22 | 0.187 | 0.136 | -5.1pp |
 | 0.3–0.5 | 11 | 0.409 | 0.273 | -13.6pp |
-| 0.5–0.7 | 15 | 0.571 | 0.467 | -10.4pp |
-| 0.7–0.9 | 26 | 0.836 | 0.846 | +1.0pp |
-| 0.9–1.0 | 26 | 0.974 | 0.962 | -1.3pp |
+| 0.5–0.7 | 16 | 0.570 | 0.500 | -7.0pp |
+| 0.7–0.9 | 27 | 0.837 | 0.852 | +1.5pp |
+| 0.9–1.0 | 27 | 0.975 | 0.963 | -1.2pp |
 
 ## Known limitations
 
