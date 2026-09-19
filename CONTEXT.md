@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-_Regenerated 2026-09-18T17:05:59+00:00 by `forecast/score.py`. Do not hand-edit._
+_Regenerated 2026-09-19T16:32:00+00:00 by `forecast/score.py`. Do not hand-edit._
 
 This file is the working state of a daily gas-price forecast calibration loop. It is written for two readers: a human skimming, and a fresh Claude session with no memory of this project. If you are the latter, read DESIGN.md next — it holds the reasoning, the rejected alternatives, and the invariants.
 
@@ -12,31 +12,31 @@ The target is always the **change** in price, never the level, and thresholds ar
 
 ## Data on hand
 
-- Observations: **57**
-- Range: `2026-07-24` to `2026-09-18`
+- Observations: **58**
+- Range: `2026-07-24` to `2026-09-19`
 - Gaps: **0**
-- Forecasts written: **51**
-- Forecasts scored: **50**
+- Forecasts written: **52**
+- Forecasts scored: **51**
 - Awaiting outcome: **1**
 
-Most recent scored call — `2026-09-18` (`model` mode): predicted **+5.14c**, actual **+3.01c**, error **-2.13c**.
+Most recent scored call — `2026-09-19` (`model` mode): predicted **+1.16c**, actual **+0.72c**, error **-0.44c**.
 
 ## What the model is keying on
 
-Standardised ridge coefficients, refit on all **49** training rows available today. Units are cents of predicted next-day change per one standard deviation of the feature, so the magnitudes are directly comparable to each other.
+Standardised ridge coefficients, refit on all **50** training rows available today. Units are cents of predicted next-day change per one standard deviation of the feature, so the magnitudes are directly comparable to each other.
 
 | feature | weight | what it is |
 |---|---|---|
-| `d1` | +1.034 | yesterday's change |
-| `d2` | -0.457 | the change 2 days ago |
-| `d3` | -0.261 | the change 3 days ago |
+| `d1` | +1.057 | yesterday's change |
+| `d2` | -0.503 | the change 2 days ago |
+| `d3` | -0.254 | the change 3 days ago |
 | `ma7` | +0.254 | mean of the last 7 daily changes |
 | `wk` | +0.254 | 7-day change |
-| `dow` | -0.200 | day of week (of the target) |
-| `ma3` | +0.186 | mean of the last 3 daily changes |
-| `vol7` | +0.071 | volatility of the last 7 daily changes |
+| `dow` | -0.202 | day of week (of the target) |
+| `ma3` | +0.145 | mean of the last 3 daily changes |
+| `vol7` | +0.084 | volatility of the last 7 daily changes |
 
-Largest: `d1` at +1.034, 2.3× the next-largest (`d2`).
+Largest: `d1` at +1.057, 2.1× the next-largest (`d2`).
 
 DESIGN.md §10 found on weekly data that last period's change dominates everything else by roughly 3×, with the mechanism being staggered repricing — stations don't all move at once, so a shock keeps propagating for days. **If `d1` is not on top here, that is a genuine finding about daily data**, not a bug: it would mean the daily dynamics differ from the weekly ones this design was built on. Worth investigating before trusting the forecasts.
 
@@ -44,30 +44,30 @@ DESIGN.md §10 found on weekly data that last period's change dominates everythi
 
 `prior` and `model` rows are reported separately and never pooled. Prior-mode rows are bootstrap output and say nothing about model skill.
 
-### mode = `model` (n = 19)
+### mode = `model` (n = 20)
 
-- Effective n, by error correlation: **19.0** (lag-1 r = -0.15)
-- Effective n, by price-change correlation: **8.2** (lag-1 r = +0.40)
-- **Gating on the lower: n_eff = 8.2** (the outcome figure).
+- Effective n, by error correlation: **20.0** (lag-1 r = -0.12)
+- Effective n, by price-change correlation: **9.0** (lag-1 r = +0.38)
+- **Gating on the lower: n_eff = 9.0** (the outcome figure).
 
-- **Nothing is concludable at n_eff = 8.2.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
+- **Nothing is concludable at n_eff = 9.0.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
 
 | threshold | Brier | vs 0.25 | base rate | n |
 |---|---|---|---|---|
-| > -2c | 0.0026 | +0.2474 | 1.00 ⚠︎ degenerate | 19 |
-| > -1c | 0.0248 | +0.2252 | 1.00 ⚠︎ degenerate | 19 |
-| > +0c **(headline)** | 0.1152 | +0.1348 | 0.95 | 19 |
-| > +1c | 0.1950 | +0.0550 | 0.58 | 19 |
-| > +2c | 0.1916 | +0.0584 | 0.37 | 19 |
+| > -2c | 0.0027 | +0.2473 | 1.00 ⚠︎ degenerate | 20 |
+| > -1c | 0.0248 | +0.2252 | 1.00 ⚠︎ degenerate | 20 |
+| > +0c **(headline)** | 0.1138 | +0.1362 | 0.95 | 20 |
+| > +1c | 0.1992 | +0.0508 | 0.55 | 20 |
+| > +2c | 0.1881 | +0.0619 | 0.35 | 20 |
 
 Judge this system on the `> +0c` row, secondarily `±1c`. The ±2c thresholds routinely resolve before they are asked — a Brier near zero against a base rate of 0 or 1 measures nothing. **Do not average across the grid and quote the result as 'the Brier score'.**
 
 **Predictive distribution**
 
-- PIT mean: **0.599** (target 0.500)
-- 80% interval coverage: **78.9%** (target 80.0%)
-- Residual sd 2.32c vs claimed sigma 1.54c (ratio 1.51)
-- Spread check: **held** at n_eff = 8.2 (needs 20). Errors currently look wider than the claimed sigma, but that comparison is not yet evidence.
+- PIT mean: **0.590** (target 0.500)
+- 80% interval coverage: **80.0%** (target 80.0%)
+- Residual sd 2.28c vs claimed sigma 1.57c (ratio 1.45)
+- Spread check: **held** at n_eff = 9.0 (needs 20). Errors currently look wider than the claimed sigma, but that comparison is not yet evidence.
 
 **Reliability** (pooled across thresholds; bins with n<3 suppressed)
 
@@ -75,10 +75,10 @@ Judge this system on the `> +0c` row, secondarily `±1c`. The ±2c thresholds ro
 |---|---|---|---|---|
 | 0.0–0.1 | 9 | 0.034 | 0.111 | +7.7pp |
 | 0.1–0.3 | 9 | 0.203 | 0.444 | +24.1pp |
-| 0.3–0.5 | 9 | 0.379 | 0.556 | +17.6pp |
-| 0.5–0.7 | 15 | 0.600 | 0.800 | +20.0pp |
-| 0.7–0.9 | 17 | 0.816 | 0.941 | +12.5pp |
-| 0.9–1.0 | 36 | 0.966 | 1.000 | +3.4pp |
+| 0.3–0.5 | 10 | 0.376 | 0.500 | +12.4pp |
+| 0.5–0.7 | 16 | 0.595 | 0.750 | +15.5pp |
+| 0.7–0.9 | 19 | 0.811 | 0.947 | +13.6pp |
+| 0.9–1.0 | 37 | 0.965 | 1.000 | +3.5pp |
 
 ### mode = `prior` (n = 31)
 
