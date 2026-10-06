@@ -17,6 +17,7 @@ true about 70% of the time.
 | [`DESIGN.md`](DESIGN.md) | Why everything is the way it is, including what was tried and rejected. |
 | [`data/aaa_national_average.csv`](data/aaa_national_average.csv) | One observation per day. |
 | [`data/forecasts.csv`](data/forecasts.csv) | One forecast per day, append-only, never edited. |
+| [`data/regime_windows.csv`](data/regime_windows.csv) | Stretches the weekly review flagged as a regime the model can't cover. Annotation only; nothing is excluded. |
 | [`scraper/`](scraper/README.md) | Collection. |
 | [`forecast/`](forecast/README.md) | Forecasting and scoring. |
 

@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-_Regenerated 2026-10-06T18:55:31+00:00 by `forecast/score.py`. Do not hand-edit._
+_Regenerated 2026-10-06T23:11:23+00:00 by `forecast/score.py`. Do not hand-edit._
 
 This file is the working state of a daily gas-price forecast calibration loop. It is written for two readers: a human skimming, and a fresh Claude session with no memory of this project. If you are the latter, read DESIGN.md next — it holds the reasoning, the rejected alternatives, and the invariants.
 
@@ -117,9 +117,22 @@ Judge this system on the `> +0c` row, secondarily `±1c`. The ±2c thresholds ro
 | 0.7–0.9 | 31 | 0.837 | 0.871 | +3.4pp |
 | 0.9–1.0 | 31 | 0.975 | 0.968 | -0.7pp |
 
+## Flagged regime windows
+
+Stretches the weekly review flagged as a regime the model does not cover — single-day moves past ±5c, where news rather than diffusion is driving price. Recorded in `data/regime_windows.csv` (append-only). **Annotation only:** rows inside a window are scored exactly like every other row and are never excluded or down-weighted. The point is that a reviewer reading the calibration numbers above at higher n_eff can attribute error in these stretches to a known shock instead of reading it as drift or noise.
+
+### `2026-09-08` to `2026-09-20` — issue #9
+
+Upward run with three single-day moves past +5c (09-09, 09-10, 09-17) after roughly nine near-flat days. Momentum picked the run up late and light rather than missing it outright, so this is the milder form of the deaf-to-news failure. Flagged by the weekly review; no model, feature, or constant was changed.
+
+- Observed days in window: **13**
+- Largest single-day move: **+7.31c** on `2026-09-09`
+- Cumulative change, last close before the window to its last day: **+32.56c**
+- `model` mode: 13 scored forecast(s) inside, mean absolute error 1.69c (mean error +0.64c, i.e. the model undershot on average) vs 0.77c across the 24 model-mode row(s) outside every flagged window.
+
 ## Known limitations
 
-- **The model is deaf to news.** Its worst historical call was a +48.5c week predicted at +6.5c, driven by a geopolitical supply shock. Momentum is a lagging echo when news drives price, not a leading signal. Expect the calibration to degrade in exactly those weeks.
+- **The model is deaf to news.** Its worst historical call was a +48.5c week predicted at +6.5c, driven by a geopolitical supply shock. Momentum is a lagging echo when news drives price, not a leading signal. Expect the calibration to degrade in exactly those weeks — the flagged regime windows above are where that has happened in the daily record so far.
 - **`PRIOR_SIGMA_C = 1.0` cents is a guess**, derived loosely from weekly EIA variance. Daily autocorrelation has never been measured. Replacing it with a measured value at n >= 60 is milestone M5.
 - **`PRIOR_SHRINK = 0.35` has no empirical basis.** Placeholder, also due to die at M5.
 

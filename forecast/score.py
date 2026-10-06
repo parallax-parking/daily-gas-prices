@@ -26,7 +26,7 @@ import math
 import statistics
 import sys
 from datetime import date as date_cls
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -249,6 +249,104 @@ def pit_summary(scored: list[dict[str, object]]) -> dict[str, float] | None:
     }
 
 
+# Windows the weekly review has flagged as a regime the model does not cover
+# (REVIEW_ROUTINE.md trigger 5). Annotation only: rows inside a window are
+# scored exactly like every other row and are never excluded or down-weighted.
+# The point is that a reviewer reading the record months from now can tell a
+# known shock from drift, instead of having to rediscover it from the raw CSV.
+REGIME_WINDOWS_PATH = Path("data/regime_windows.csv")
+
+
+def load_regime_windows(path: Path) -> list[dict[str, object]]:
+    """Read the flagged-window file. Rows that do not parse are dropped, not
+    fatal: a typo in an annotation must never stop the daily report."""
+    out = []
+    for row in read_csv(path):
+        try:
+            start = date_cls.fromisoformat((row.get("start") or "").strip())
+            end = date_cls.fromisoformat((row.get("end") or "").strip())
+        except ValueError:
+            continue
+        if end < start:
+            continue
+        out.append(
+            {
+                "start": start,
+                "end": end,
+                "issue": (row.get("issue") or "").strip(),
+                "note": (row.get("note") or "").strip(),
+            }
+        )
+    out.sort(key=lambda w: w["start"])
+    return out
+
+
+def regime_summary(
+    window: dict[str, object],
+    prices: dict[date_cls, float],
+    scored: list[dict[str, object]],
+    all_windows: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """What actually happened inside a flagged window, from the record itself.
+
+    The numbers are recomputed every run rather than copied from the issue, so
+    the annotation can never drift from the data it describes.
+    """
+    start, end = window["start"], window["end"]
+    days = sorted(d for d in prices if start <= d <= end)
+
+    largest = None  # (date, change_c), by absolute size
+    for day in days:
+        prior = prices.get(day - timedelta(days=1))
+        if prior is None:
+            continue
+        change = prices[day] - prior
+        if largest is None or abs(change) > abs(largest[1]):
+            largest = (day, change)
+
+    cumulative = None
+    if days and (start - timedelta(days=1)) in prices:
+        # Change over the window *including* the move into its first day: a
+        # window that starts on the day of a jump should count that jump.
+        cumulative = prices[days[-1]] - prices[start - timedelta(days=1)]
+    elif len(days) > 1:
+        cumulative = prices[days[-1]] - prices[days[0]]
+
+    def inside(row, win=window):
+        return win["start"] <= date_cls.fromisoformat(row["target_date"]) <= win["end"]
+
+    # "Outside" means outside *every* flagged window, not just this one, so the
+    # comparison figure is the model's behaviour in ordinary conditions.
+    others = all_windows or [window]
+    by_mode: dict[str, dict[str, float]] = {}
+    for mode in ("model", "prior"):
+        rows_in = [r for r in scored if r["mode"] == mode and inside(r)]
+        rows_out = [
+            r for r in scored
+            if r["mode"] == mode and not any(inside(r, w) for w in others)
+        ]
+        if not rows_in:
+            continue
+        by_mode[mode] = {
+            "n_in": len(rows_in),
+            "mae_in": statistics.fmean(abs(r["actual_c"] - r["mu_c"]) for r in rows_in),
+            "bias_in": statistics.fmean(r["actual_c"] - r["mu_c"] for r in rows_in),
+            "n_out": len(rows_out),
+            "mae_out": (
+                statistics.fmean(abs(r["actual_c"] - r["mu_c"]) for r in rows_out)
+                if rows_out
+                else float("nan")
+            ),
+        }
+
+    return {
+        "days": len(days),
+        "largest": largest,
+        "cumulative": cumulative,
+        "by_mode": by_mode,
+    }
+
+
 FEATURE_GLOSS = {
     "d1": "yesterday's change",
     "d2": "the change 2 days ago",
@@ -365,7 +463,9 @@ def render(
     prices: dict[date_cls, float],
     forecasts: list[dict[str, str]],
     pending: list[dict[str, str]],
+    windows: list[dict[str, object]] | None = None,
 ) -> str:
+    windows = windows or []
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     lines: list[str] = []
     add = lines.append
@@ -611,13 +711,64 @@ def render(
                 )
             add("")
 
+    add("## Flagged regime windows")
+    add("")
+    add(
+        "Stretches the weekly review flagged as a regime the model does not "
+        "cover — single-day moves past ±5c, where news rather than diffusion "
+        "is driving price. Recorded in `data/regime_windows.csv` (append-only). "
+        "**Annotation only:** rows inside a window are scored exactly like "
+        "every other row and are never excluded or down-weighted. The point is "
+        "that a reviewer reading the calibration numbers above at higher n_eff "
+        "can attribute error in these stretches to a known shock instead of "
+        "reading it as drift or noise."
+    )
+    add("")
+    if not windows:
+        add("- None recorded.")
+    for window in windows:
+        summary = regime_summary(window, prices, scored, windows)
+        issue = window["issue"]
+        issue_text = f" — issue #{issue}" if issue else ""
+        add(f"### `{window['start']}` to `{window['end']}`{issue_text}")
+        add("")
+        if window["note"]:
+            add(window["note"])
+            add("")
+        if summary["days"] == 0:
+            add("- No observations fall inside this window.")
+        else:
+            add(f"- Observed days in window: **{summary['days']}**")
+            if summary["largest"] is not None:
+                day, change = summary["largest"]
+                add(f"- Largest single-day move: **{change:+.2f}c** on `{day}`")
+            if summary["cumulative"] is not None:
+                add(
+                    "- Cumulative change, last close before the window to its "
+                    f"last day: **{summary['cumulative']:+.2f}c**"
+                )
+            for mode, stats in summary["by_mode"].items():
+                add(
+                    f"- `{mode}` mode: {stats['n_in']} scored forecast(s) inside, "
+                    f"mean absolute error {cents(stats['mae_in'])} "
+                    f"(mean error {stats['bias_in']:+.2f}c, i.e. the model "
+                    f"{'under' if stats['bias_in'] > 0 else 'over'}shot on average) "
+                    f"vs {cents(stats['mae_out'])} across the {stats['n_out']} "
+                    f"{mode}-mode row(s) outside every flagged window."
+                )
+            if not summary["by_mode"]:
+                add("- No scored forecasts fall inside this window.")
+        add("")
+
     add("## Known limitations")
     add("")
     add(
         "- **The model is deaf to news.** Its worst historical call was a "
         "+48.5c week predicted at +6.5c, driven by a geopolitical supply shock. "
         "Momentum is a lagging echo when news drives price, not a leading "
-        "signal. Expect the calibration to degrade in exactly those weeks."
+        "signal. Expect the calibration to degrade in exactly those weeks — "
+        "the flagged regime windows above are where that has happened in the "
+        "daily record so far."
     )
     add(
         "- **`PRIOR_SIGMA_C = 1.0` cents is a guess**, derived loosely from "
@@ -682,6 +833,12 @@ def main(argv: list[str] | None = None) -> int:
         help="also write the GitHub Pages dashboard here (e.g. docs/index.html)",
     )
     parser.add_argument("--grade", default="regular")
+    parser.add_argument(
+        "--regime-windows",
+        type=Path,
+        default=REGIME_WINDOWS_PATH,
+        help="append-only CSV of windows the weekly review flagged (start,end,issue,note)",
+    )
     args = parser.parse_args(argv)
 
     prices = feat.load_observations(args.observations, args.grade)
@@ -693,7 +850,10 @@ def main(argv: list[str] | None = None) -> int:
     pending = [r for r in forecasts if r.get("target_date") not in scored_dates]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(render(scored, prices, forecasts, pending), encoding="utf-8")
+    windows = load_regime_windows(args.regime_windows)
+    args.out.write_text(
+        render(scored, prices, forecasts, pending, windows), encoding="utf-8"
+    )
 
     if args.site:
         args.site.parent.mkdir(parents=True, exist_ok=True)

@@ -14,6 +14,7 @@ import csv
 import io
 import math
 import random
+import re
 import sys
 import tempfile
 import unittest
@@ -608,3 +609,97 @@ class FeatureCausality(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RegimeWindows(unittest.TestCase):
+    """Flagged windows are annotation: rendered with numbers from the record,
+    never used to exclude or re-weight a row (REVIEW_ROUTINE.md trigger 5)."""
+
+    def build(self, tmp: str, windows_csv: str | None, days: int = 60):
+        obs, forecasts, context = (
+            Path(tmp) / "obs.csv",
+            Path(tmp) / "forecasts.csv",
+            Path(tmp) / "CONTEXT.md",
+        )
+        series = random_walk(days)
+        # Inject a shock: an +8c jump on day 40, the kind of move trigger 5
+        # flags, so the window has something real to summarise.
+        shock_day = series[40][0]
+        series = [
+            (d, p + (0.08 if i >= 40 else 0.0)) for i, (d, p) in enumerate(series)
+        ]
+        for cut in range(2, len(series)):
+            write_observations(obs, series[:cut])
+            run_forecast(["--observations", str(obs), "--out", str(forecasts)])
+        write_observations(obs, series)
+
+        argv = [
+            "--observations", str(obs),
+            "--forecasts", str(forecasts),
+            "--out", str(context),
+        ]
+        if windows_csv is not None:
+            windows = Path(tmp) / "regime_windows.csv"
+            windows.write_text(windows_csv, encoding="utf-8")
+            argv += ["--regime-windows", str(windows)]
+        else:
+            argv += ["--regime-windows", str(Path(tmp) / "missing.csv")]
+        self.assertEqual(run_score(argv), 0)
+        return context.read_text(encoding="utf-8"), shock_day
+
+    def test_section_exists_and_is_empty_without_a_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            text, _ = self.build(tmp, None)
+            self.assertIn("## Flagged regime windows", text)
+            self.assertIn("- None recorded.", text)
+
+    def test_window_is_rendered_from_the_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            start = date.fromisoformat("2026-02-10")  # day 40 of the series
+            end = start + timedelta(days=5)
+            csv_text = (
+                "start,end,issue,note\n"
+                f"{start},{end},42,\"Synthetic shock for the test.\"\n"
+            )
+            text, shock_day = self.build(tmp, csv_text)
+            self.assertEqual(shock_day, start.isoformat())
+            self.assertIn(f"### `{start}` to `{end}` — issue #42", text)
+            self.assertIn("Synthetic shock for the test.", text)
+            self.assertIn("Observed days in window: **6**", text)
+            # The injected jump is the largest move and lands on the first day.
+            self.assertRegex(text, rf"Largest single-day move: \*\*\+\d+\.\d\dc\*\* on `{start}`")
+            self.assertIn("scored forecast(s) inside", text)
+            self.assertNotIn("- None recorded.", text)
+
+    def test_windows_never_change_what_is_scored(self):
+        with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
+            without, _ = self.build(tmp_a, None)
+            with_window, _ = self.build(
+                tmp_b, "start,end,issue,note\n2026-02-10,2026-02-15,42,x\n"
+            )
+            counts = re.compile(r"(Forecasts scored: \*\*\d+\*\*|n = \d+\)|\| > \+0c \*\*\(headline\)\*\* \|[^\n]*)")
+            self.assertEqual(counts.findall(without), counts.findall(with_window))
+
+    def test_malformed_rows_are_skipped_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_text = (
+                "start,end,issue,note\n"
+                "not-a-date,2026-02-15,1,bad\n"
+                "2026-02-15,2026-02-10,2,ends before it starts\n"
+                "2026-02-10,2026-02-12,3,fine\n"
+            )
+            text, _ = self.build(tmp, csv_text)
+            self.assertIn("issue #3", text)
+            self.assertNotIn("issue #1", text)
+            self.assertNotIn("issue #2", text)
+
+    def test_loader_sorts_by_start(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "w.csv"
+            path.write_text(
+                "start,end,issue,note\n2026-03-01,2026-03-02,,b\n2026-01-01,2026-01-02,,a\n",
+                encoding="utf-8",
+            )
+            windows = sc.load_regime_windows(path)
+            self.assertEqual([w["note"] for w in windows], ["a", "b"])
+            self.assertEqual(sc.load_regime_windows(Path(tmp) / "nope.csv"), [])
