@@ -128,3 +128,14 @@ Trigger 3 is gated at `n_eff >= 50`, which the system will not reach for
 months. Triggers 1 and 4 are the only ones that can fire meaningfully in the
 first weeks — which is the point: it is on now so that a silent pipeline
 failure gets noticed, and it is designed to stay quiet until then.
+
+## Follow-up for trigger 5
+
+The Routine only opens the issue. Recording the window is a human step, by
+design — the Routine's rules forbid it from committing anything. To close a
+trigger-5 issue, append one row to `data/regime_windows.csv`
+(`start,end,issue,note`) and let the next daily run render it into
+`CONTEXT.md` under "Flagged regime windows". Treat the file like
+`forecasts.csv`: never edit or remove a committed row. If a run continues past
+a window already recorded, add a second row for the extension rather than
+widening the first.

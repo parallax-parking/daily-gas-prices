@@ -77,6 +77,14 @@ Three guards `CONTEXT.md` applies automatically:
   not the model is any good. When the two figures sit close together, the model
   is not yet removing the overlap between consecutive days, and `CONTEXT.md`
   says so.
+- **Flagged regime windows are annotation, not exclusion.** When the weekly
+  review flags a stretch where single-day moves exceeded ±5c (trigger 5), a
+  human appends one row to `data/regime_windows.csv` — `start,end,issue,note`.
+  `score.py` renders each window with numbers recomputed from the record
+  (largest move, cumulative change, in-window vs out-of-window error) so a
+  later reader can tell a known shock from drift. Rows inside a window are
+  still scored like every other row; the file changes what the report
+  *explains*, never what it *counts*.
 
 - **The spread check runs in both directions.** Residual sd more than 1.25×
   the claimed sigma is overconfidence — intervals narrower than the errors
