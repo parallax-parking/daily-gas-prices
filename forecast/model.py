@@ -19,7 +19,7 @@ import numpy as np
 # definition lives in thresholds.py, which needs it without pulling in numpy.
 from thresholds import prob_greater_than  # noqa: F401
 
-MODEL_VERSION = "ridge-a5-v1"
+MODEL_VERSION = "ridge-a5-v2"  # v2: M5 measured prior constants; ridge unchanged
 
 # Below this many complete training pairs, forecast from the prior instead.
 MIN_TRAIN = 30
@@ -27,18 +27,25 @@ MIN_TRAIN = 30
 ALPHA = 5.0
 
 # --- Prior constants -------------------------------------------------------
-# Both of these are guesses, and are labelled as such deliberately.
+# Measured, not guessed, since M5 (2026-10-31): forecast/measure_prior.py on
+# 98 consecutive daily changes (2026-07-24 to 2026-10-30). Pinned by hand
+# rather than computed at runtime because the prior only runs when data is
+# scarce — exactly when a runtime measurement would be unreliable — and a
+# pinned constant stays inspectable. Re-run the script to re-measure; record
+# any update here and in DESIGN.md §0/§6.5/§8, and bump MODEL_VERSION.
 #
-# PRIOR_SIGMA_C comes from weekly EIA variance, which pins the daily figure
-# only loosely: roughly 0.9-1.5 cents depending on the assumed daily
-# autocorrelation rho. **Rho has never been measured on daily data.** Measuring
-# it is the main scientific output of the first two months — DESIGN.md §9, M5.
-PRIOR_SIGMA_C = 1.0
+# Measured alongside, for the record: daily sigma 1.714c unconditional,
+# lag-1 autocorrelation rho1 = +0.666. The pre-M5 guesses were
+# PRIOR_SIGMA_C = 1.0 (from weekly EIA variance, which implied 0.9-1.5c)
+# and PRIOR_SHRINK = 0.35 (pure placeholder).
 
-# Pure placeholder. Shrinks the recent-mean-change toward zero because a naive
-# 7-day mean overreacts during the bootstrap. It has no empirical basis and
-# should die at M5.
-PRIOR_SHRINK = 0.35
+# Residual sd around the shrunk-mean prior's own one-step predictions —
+# what this constant claims to be. Measured 1.601c.
+PRIOR_SIGMA_C = 1.60
+
+# Slope, through the origin, of the next-day change on the trailing 7-day
+# mean change — the prior's exact functional form. Measured 0.689.
+PRIOR_SHRINK = 0.69
 
 # sigma can never sensibly be zero — a degenerate predictive distribution
 # scores infinitely badly the first time it is wrong.

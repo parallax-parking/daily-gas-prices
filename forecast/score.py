@@ -438,7 +438,7 @@ def spread_verdict(ratio: float, n_eff: float) -> str:
             "intervals are wider than the errors justify, which pulls every "
             "threshold probability toward 50% and costs the forecast its "
             "ability to distinguish one day from another. Less harmful than "
-            "overconfidence, but it means sigma is set too high — see M5."
+            "overconfidence, but it means sigma is set too high."
         )
     return (
         f"- Spread looks right: residual sd is {ratio:.2f}× the claimed sigma, "
@@ -771,13 +771,13 @@ def render(
         "daily record so far."
     )
     add(
-        "- **`PRIOR_SIGMA_C = 1.0` cents is a guess**, derived loosely from "
-        "weekly EIA variance. Daily autocorrelation has never been measured. "
-        "Replacing it with a measured value at n >= 60 is milestone M5."
-    )
-    add(
-        "- **`PRIOR_SHRINK = 0.35` has no empirical basis.** Placeholder, also "
-        "due to die at M5."
+        "- **The prior constants are measured on one regime.** M5 (2026-10-31) "
+        "replaced the guessed `PRIOR_SIGMA_C`/`PRIOR_SHRINK` with values "
+        "measured on 98 daily changes (sigma 1.60c, shrink 0.69, daily lag-1 "
+        "rho +0.666) — a record that includes one news-driven window. They "
+        "only matter if the bootstrap ever runs again; re-measure with "
+        "`forecast/measure_prior.py` before trusting them on a new grade or "
+        "series."
     )
     add("")
     return "\n".join(lines) + "\n"
