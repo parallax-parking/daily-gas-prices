@@ -100,10 +100,9 @@ Three guards `CONTEXT.md` applies automatically:
   2026-03-09: actual +48.5c, predicted +6.5c — a geopolitical supply shock, and
   the second-largest weekly move in the 33-year record. When news drives price
   rather than diffusion, momentum is a lagging echo, not a leading signal.
-- **`PRIOR_SIGMA_C = 1.0` cents is a guess.** It comes from weekly EIA variance,
-  which pins the daily figure only loosely. The daily autocorrelation ρ it
-  depends on has never been measured — doing so is the main scientific output of
-  the first two months.
-- **`PRIOR_SHRINK = 0.35` has no empirical basis at all.** Placeholder.
-
-Both constants are due to be replaced with measured values once n ≥ 60.
+- **The prior constants are measured on a single stretch of one regime.**
+  M5 (2026-10-31, `measure_prior.py`, 98 daily changes) replaced the guesses:
+  `PRIOR_SIGMA_C = 1.60` (was 1.0), `PRIOR_SHRINK = 0.69` (was 0.35), with
+  daily lag-1 ρ measured at +0.666 and unconditional daily σ at 1.714c. They
+  only matter if the bootstrap runs again; re-measure before trusting them on
+  a new grade or series.

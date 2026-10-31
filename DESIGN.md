@@ -1,6 +1,6 @@
 # Design: daily gas price forecast calibration loop
 
-**Status:** implemented through M4; M5 blocked on data volume
+**Status:** implemented through M5
 **Repo:** `parallax-parking/daily-gas-prices`
 (migrated from `parallax-parking/nantucket-late-august` on 2026-08-06, history preserved)
 **Audience:** a Claude Code session implementing or extending this. You will not
@@ -23,7 +23,7 @@ written, with one correction noted in §2._
 | M2 — scoring | done. `forecast/score.py` → `CONTEXT.md`. |
 | M3 — fitted model | done and tested against synthetic data. **Dormant until 30 training rows exist** (~2026-08-30 at one row/day). |
 | M4 — review routine | **done.** Created 2026-07-31 as trigger `trig_01T5fCpZdn3im3J1Km178LXd`, cron `23 14 * * 1`, fresh session per firing; first firing 2026-08-03 14:23 UTC. Details and the verbatim prompt in `forecast/REVIEW_ROUTINE.md`. Deliberately *not* a session-scoped cron: those expire after 7 days, which §8 rules out. |
-| M5 — replace the prior with measurement | **blocked.** Needs n ≥ 60, i.e. no earlier than ~2026-09-28. |
+| M5 — replace the prior with measurement | **done 2026-10-31**, on 98 daily changes (2026-07-24 to 2026-10-30) via `forecast/measure_prior.py`. Measured: daily σ 1.714c, lag-1 ρ **+0.666**, shrink 0.689, prior residual sd 1.601c. `PRIOR_SIGMA_C` 1.0 → **1.60**, `PRIOR_SHRINK` 0.35 → **0.69**, `MODEL_VERSION` → `ridge-a5-v2` (ridge itself unchanged). |
 
 Decisions taken against §11's open questions:
 
@@ -302,14 +302,23 @@ not average across the grid and quote the result as "the Brier score."
 ### 6.5 Bootstrap prior
 
 Below `MIN_TRAIN = 30` observations, forecast from an explicit prior:
-`mu = 0.35 × mean(last 7 daily changes)`, `sigma = PRIOR_SIGMA_C = 1.0` cents.
+`mu = PRIOR_SHRINK × mean(last 7 daily changes)`, `sigma = PRIOR_SIGMA_C`.
 Tag the row `mode='prior'`.
 
-`PRIOR_SIGMA_C` is a real guess and is labelled as one in the code. It comes
-from weekly EIA variance, which pins daily sigma only loosely — roughly 0.9–1.5
-cents depending on assumed daily autocorrelation. **The daily autocorrelation ρ
-has never been measured.** Measuring it is the main scientific output of the
-first two months (§9, M5).
+Both constants began as guesses and were labelled as such: sigma 1.0c from
+weekly EIA variance (which pinned the daily figure only to 0.9–1.5c depending
+on assumed daily autocorrelation), shrink 0.35 a pure placeholder. **M5
+replaced them with measurement on 2026-10-31** (`forecast/measure_prior.py`,
+98 consecutive daily changes): `PRIOR_SIGMA_C = 1.60` (residual sd of the
+prior's own one-step predictions), `PRIOR_SHRINK = 0.69` (through-origin slope
+of next change on the trailing 7-day mean). The daily lag-1 autocorrelation —
+the number this project was started partly to measure — is **ρ = +0.666**,
+with unconditional daily σ = 1.714c. Two readings: the EIA-derived guess was
+~60% too tight, exactly the direction §7's spread check had been leaning in
+prior mode; and daily momentum is strong enough that the placeholder shrink
+undercut the prior's own mean by half. The record measured includes one
+news-driven regime window (§ regime windows), kept in per the
+annotation-only rule.
 
 Scoring reports `prior` and `model` rows separately. Prior-mode rows are not
 evidence about model skill.
@@ -341,9 +350,11 @@ evidence about model skill.
   is held and states which way the ratio currently leans, without treating it as
   evidence.
 
-  This check is also the earliest read on `PRIOR_SIGMA_C` (§6.5): a persistent
-  underconfidence flag in `prior` mode is direct evidence the 1.0c guess is too
-  high, which is exactly what M5 exists to replace.
+  This check was also the earliest read on `PRIOR_SIGMA_C` (§6.5): a persistent
+  underconfidence flag in `prior` mode would have been direct evidence the
+  1.0c guess was too high. What it leaned toward instead was the opposite —
+  prior-mode residual sd ran 1.22× the claimed sigma — and M5's measurement
+  confirmed that direction: 1.60c measured against the 1.0c guess.
 - **Effective n**, not nominal n. Consecutive daily forecasts are nearly the
   same bet. Uses the lag-1 autocorrelation adjustment `n_eff = n(1-r)/(1+r)`,
   computed **two ways**, and gates on the lower:
@@ -407,6 +418,9 @@ The daily job runs at `:17` and the weekly review at `:23` for this reason.
 
 **M5 — replace the prior with measurement.** Once `n ≥ 60`, estimate daily ρ and
 σ directly, replace `PRIOR_SIGMA_C`, and record the measured values in this doc.
+**Done 2026-10-31** — values in §0's milestone table and §6.5; method in
+`forecast/measure_prior.py`, which stays in the tree so the measurement is
+re-runnable as the record grows.
 
 ---
 
@@ -465,6 +479,6 @@ leading signal. M4's review routine exists partly to flag this state.
 - **Exogenous inputs.** Weekly EIA retail and daily WTI improved the weekly
   model materially (skill +0.291 → +0.369). Adding them here means a second
   fetcher and as-of-date discipline. M6, not now.
-- **`PRIOR_SHRINK = 0.35`** is unjustified. It's a placeholder that should die
-  at M5.
+- **`PRIOR_SHRINK`.** Resolved at M5: measured at 0.69 (was 0.35, unjustified),
+  see §6.5.
 - `CONTEXT.md` is committed on every run. Noisy history, clean audit trail.
