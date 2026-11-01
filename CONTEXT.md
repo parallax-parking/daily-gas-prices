@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-_Regenerated 2026-10-31T17:47:09+00:00 by `forecast/score.py`. Do not hand-edit._
+_Regenerated 2026-11-01T18:26:57+00:00 by `forecast/score.py`. Do not hand-edit._
 
 This file is the working state of a daily gas-price forecast calibration loop. It is written for two readers: a human skimming, and a fresh Claude session with no memory of this project. If you are the latter, read DESIGN.md next — it holds the reasoning, the rejected alternatives, and the invariants.
 
@@ -12,29 +12,29 @@ The target is always the **change** in price, never the level, and thresholds ar
 
 ## Data on hand
 
-- Observations: **100**
-- Range: `2026-07-24` to `2026-10-31`
+- Observations: **101**
+- Range: `2026-07-24` to `2026-11-01`
 - Gaps: **0**
-- Forecasts written: **94**
-- Forecasts scored: **93**
+- Forecasts written: **95**
+- Forecasts scored: **94**
 - Awaiting outcome: **1**
 
-Most recent scored call — `2026-10-31` (`model` mode): predicted **-1.56c**, actual **-2.09c**, error **-0.53c**.
+Most recent scored call — `2026-11-01` (`model` mode): predicted **-1.76c**, actual **-1.05c**, error **+0.71c**.
 
 ## What the model is keying on
 
-Standardised ridge coefficients, refit on all **92** training rows available today. Units are cents of predicted next-day change per one standard deviation of the feature, so the magnitudes are directly comparable to each other.
+Standardised ridge coefficients, refit on all **93** training rows available today. Units are cents of predicted next-day change per one standard deviation of the feature, so the magnitudes are directly comparable to each other.
 
 | feature | weight | what it is |
 |---|---|---|
 | `d1` | +1.141 | yesterday's change |
-| `d2` | -0.486 | the change 2 days ago |
-| `ma3` | +0.226 | mean of the last 3 daily changes |
-| `ma7` | +0.196 | mean of the last 7 daily changes |
-| `wk` | +0.196 | 7-day change |
-| `dow` | -0.152 | day of week (of the target) |
-| `d3` | -0.100 | the change 3 days ago |
-| `vol7` | -0.070 | volatility of the last 7 daily changes |
+| `d2` | -0.490 | the change 2 days ago |
+| `ma3` | +0.221 | mean of the last 3 daily changes |
+| `wk` | +0.193 | 7-day change |
+| `ma7` | +0.193 | mean of the last 7 daily changes |
+| `dow` | -0.140 | day of week (of the target) |
+| `d3` | -0.106 | the change 3 days ago |
+| `vol7` | -0.057 | volatility of the last 7 daily changes |
 
 Largest: `d1` at +1.141, 2.3× the next-largest (`d2`).
 
@@ -44,39 +44,39 @@ DESIGN.md §10 found on weekly data that last period's change dominates everythi
 
 `prior` and `model` rows are reported separately and never pooled. Prior-mode rows are bootstrap output and say nothing about model skill.
 
-### mode = `model` (n = 62)
+### mode = `model` (n = 63)
 
-- Effective n, by error correlation: **55.4** (lag-1 r = +0.06)
-- Effective n, by price-change correlation: **12.3** (lag-1 r = +0.67)
-- **Gating on the lower: n_eff = 12.3** (the outcome figure).
+- Effective n, by error correlation: **56.5** (lag-1 r = +0.05)
+- Effective n, by price-change correlation: **12.1** (lag-1 r = +0.68)
+- **Gating on the lower: n_eff = 12.1** (the outcome figure).
 
-- **Nothing is concludable at n_eff = 12.3.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
+- **Nothing is concludable at n_eff = 12.1.** The numbers below are recorded so the series exists, not because they support a claim. Do not quote them as skill.
 
 | threshold | Brier | vs 0.25 | base rate | n |
 |---|---|---|---|---|
-| > -2c | 0.0746 | +0.1754 | 0.90 | 62 |
-| > -1c | 0.1308 | +0.1192 | 0.76 | 62 |
-| > +0c **(headline)** | 0.1703 | +0.0797 | 0.47 | 62 |
-| > +1c | 0.1370 | +0.1130 | 0.21 | 62 |
-| > +2c | 0.0890 | +0.1610 | 0.13 | 62 |
+| > -2c | 0.0764 | +0.1736 | 0.90 | 63 |
+| > -1c | 0.1302 | +0.1198 | 0.75 | 63 |
+| > +0c **(headline)** | 0.1678 | +0.0822 | 0.46 | 63 |
+| > +1c | 0.1348 | +0.1152 | 0.21 | 63 |
+| > +2c | 0.0876 | +0.1624 | 0.13 | 63 |
 
 Judge this system on the `> +0c` row, secondarily `±1c`. The ±2c thresholds routinely resolve before they are asked — a Brier near zero against a base rate of 0 or 1 measures nothing. **Do not average across the grid and quote the result as 'the Brier score'.**
 
 **Predictive distribution**
 
-- PIT mean: **0.470** (target 0.500)
-- 80% interval coverage: **90.3%** (target 80.0%)
-- Residual sd 1.99c vs claimed sigma 1.69c (ratio 1.18)
-- Spread check: **held** at n_eff = 12.3 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.
+- PIT mean: **0.474** (target 0.500)
+- 80% interval coverage: **90.5%** (target 80.0%)
+- Residual sd 1.98c vs claimed sigma 1.68c (ratio 1.17)
+- Spread check: **held** at n_eff = 12.1 (needs 20). Errors currently look close to the claimed sigma, but that comparison is not yet evidence.
 
 **Reliability** (pooled across thresholds; bins with n<3 suppressed)
 
 | bin | n | predicted | observed | gap |
 |---|---|---|---|---|
-| 0.0–0.1 | 41 | 0.051 | 0.024 | -2.7pp |
-| 0.1–0.3 | 55 | 0.198 | 0.127 | -7.1pp |
-| 0.3–0.5 | 48 | 0.391 | 0.208 | -18.3pp |
-| 0.5–0.7 | 56 | 0.602 | 0.607 | +0.5pp |
+| 0.0–0.1 | 43 | 0.050 | 0.023 | -2.6pp |
+| 0.1–0.3 | 56 | 0.197 | 0.125 | -7.2pp |
+| 0.3–0.5 | 49 | 0.389 | 0.204 | -18.5pp |
+| 0.5–0.7 | 57 | 0.601 | 0.614 | +1.3pp |
 | 0.7–0.9 | 59 | 0.802 | 0.847 | +4.5pp |
 | 0.9–1.0 | 51 | 0.955 | 1.000 | +4.5pp |
 
@@ -128,11 +128,10 @@ Upward run with three single-day moves past +5c (09-09, 09-10, 09-17) after roug
 - Observed days in window: **13**
 - Largest single-day move: **+7.31c** on `2026-09-09`
 - Cumulative change, last close before the window to its last day: **+32.56c**
-- `model` mode: 13 scored forecast(s) inside, mean absolute error 1.69c (mean error +0.64c, i.e. the model undershot on average) vs 0.78c across the 49 model-mode row(s) outside every flagged window.
+- `model` mode: 13 scored forecast(s) inside, mean absolute error 1.69c (mean error +0.64c, i.e. the model undershot on average) vs 0.78c across the 50 model-mode row(s) outside every flagged window.
 
 ## Known limitations
 
 - **The model is deaf to news.** Its worst historical call was a +48.5c week predicted at +6.5c, driven by a geopolitical supply shock. Momentum is a lagging echo when news drives price, not a leading signal. Expect the calibration to degrade in exactly those weeks — the flagged regime windows above are where that has happened in the daily record so far.
-- **`PRIOR_SIGMA_C = 1.0` cents is a guess**, derived loosely from weekly EIA variance. Daily autocorrelation has never been measured. Replacing it with a measured value at n >= 60 is milestone M5.
-- **`PRIOR_SHRINK = 0.35` has no empirical basis.** Placeholder, also due to die at M5.
+- **The prior constants are measured on one regime.** M5 (2026-10-31) replaced the guessed `PRIOR_SIGMA_C`/`PRIOR_SHRINK` with values measured on 98 daily changes (sigma 1.60c, shrink 0.69, daily lag-1 rho +0.666) — a record that includes one news-driven window. They only matter if the bootstrap ever runs again; re-measure with `forecast/measure_prior.py` before trusting them on a new grade or series.
 
